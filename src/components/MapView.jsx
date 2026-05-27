@@ -62,8 +62,8 @@ export default function MapView({ userPoint, level, route, incident, zones, shel
     closureMarkersRef.current.forEach((c) => c.setMap(null));
     closureMarkersRef.current = [];
 
-    // Recenter and zoom to new epicenter
-    if (incident?.centroid) {
+    // Recenter and zoom to epicenter only if there's no userPoint
+    if (!userPoint && incident?.centroid) {
       map.panTo(incident.centroid);
       map.setZoom(incident.type === 'flood' ? 12 : 13);
     }
@@ -144,7 +144,7 @@ export default function MapView({ userPoint, level, route, incident, zones, shel
       });
       closureMarkersRef.current.push(marker);
     }
-  }, [ready, incident?.id, zones, shelters, t.petFriendly, t.adaAccessible, t.roadClosure]);
+  }, [ready, incident?.id, zones, shelters, userPoint, t.petFriendly, t.adaAccessible, t.roadClosure]);
 
   // 2. Update user marker + recenter when userPoint changes.
   useEffect(() => {
