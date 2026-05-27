@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background-color: #0b1220;
+  color: #e2e8f0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* High-contrast focus ring */
+*:focus-visible {
+  outline: 3px solid #38bdf8;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Google Map container */
+.gmap-container {
+  height: 100%;
+  width: 100%;
+  background: #0f172a;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+/* Diagonal stripe pattern for colorblind distinction */
+.zone-stripe-red {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(220, 38, 38, 0.35),
+    rgba(220, 38, 38, 0.35) 6px,
+    rgba(0, 0, 0, 0) 6px,
+    rgba(0, 0, 0, 0) 14px
+  );
+}
+
+/* Pulsing dot for user-in-zone */
+.user-pulse {
+  position: relative;
+}
+.user-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 3px solid currentColor;
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
+/* Screen-reader-only utility */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0);
+  white-space: nowrap; border: 0;
+}

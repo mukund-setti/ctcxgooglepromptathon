@@ -1,0 +1,86 @@
+{
+  "incident": {
+    "name": "Garden Grove Chemical Leak",
+    "chemical": "Methyl Methacrylate (MMA)",
+    "facility": "GKN Aerospace",
+    "started": "2026-05-21T10:00:00-07:00",
+    "status": "active",
+    "windDirection": "SW",
+    "plumeRiskDirection": "NE",
+    "epicenter": { "lat": 33.7800, "lng": -117.9550 }
+  },
+  "zones": [
+    {
+      "level": "mandatory",
+      "color": "#DC2626",
+      "label": "Mandatory Evacuation",
+      "guidance": "Leave immediately. Head northeast, away from the plume. Take pets, medications, and ID.",
+      "polygon": [
+        { "lat": 33.7900, "lng": -117.9650 },
+        { "lat": 33.7900, "lng": -117.9450 },
+        { "lat": 33.7700, "lng": -117.9450 },
+        { "lat": 33.7700, "lng": -117.9650 }
+      ]
+    },
+    {
+      "level": "shelter_in_place",
+      "color": "#F59E0B",
+      "label": "Shelter-in-Place",
+      "guidance": "Stay indoors. Close all windows and doors. Seal vents with damp towels. Turn off HVAC. Move to an interior room.",
+      "polygon": [
+        { "lat": 33.8050, "lng": -117.9750 },
+        { "lat": 33.8050, "lng": -117.9350 },
+        { "lat": 33.7600, "lng": -117.9350 },
+        { "lat": 33.7600, "lng": -117.9750 }
+      ]
+    },
+    {
+      "level": "watch",
+      "color": "#FB923C",
+      "label": "Watch Zone — Be Ready",
+      "guidance": "Pack a go-bag with medications, IDs, and pet supplies. Stay near home and monitor official updates.",
+      "polygon": [
+        { "lat": 33.8200, "lng": -117.9900 },
+        { "lat": 33.8200, "lng": -117.9200 },
+        { "lat": 33.7450, "lng": -117.9200 },
+        { "lat": 33.7450, "lng": -117.9900 }
+      ]
+    }
+  ],
+  "shelters": [
+    {
+      "name": "Magnolia High School",
+      "address": "2450 W Ball Rd, Anaheim, CA",
+      "petFriendly": true,
+      "adaAccessible": true,
+      "lat": 33.8250,
+      "lng": -117.9670
+    },
+    {
+      "name": "Garden Grove Community Center",
+      "address": "11300 Stanford Ave, Garden Grove, CA",
+      "petFriendly": false,
+      "adaAccessible": true,
+      "lat": 33.7740,
+      "lng": -117.9410
+    },
+    {
+      "name": "Stanton Recreation Center",
+      "address": "7800 Katella Ave, Stanton, CA",
+      "petFriendly": true,
+      "adaAccessible": true,
+      "lat": 33.8020,
+      "lng": -118.0030
+    }
+  ],
+  "roadClosures": [
+    { "name": "Brookhurst & Garden Grove Blvd", "lat": 33.7820, "lng": -117.9540 },
+    { "name": "Magnolia & Trask", "lat": 33.7755, "lng": -117.9620 }
+  ],
+  "testAddresses": [
+    { "label": "12345 Brookhurst St, Garden Grove, CA", "lat": 33.7800, "lng": -117.9550, "expected": "mandatory" },
+    { "label": "9100 Garden Grove Blvd, Garden Grove, CA", "lat": 33.7740, "lng": -117.9520, "expected": "shelter_in_place" },
+    { "label": "8200 Katella Ave, Stanton, CA", "lat": 33.8030, "lng": -117.9850, "expected": "watch" },
+    { "label": "1 Disneyland Way, Anaheim, CA", "lat": 33.8121, "lng": -117.9190, "expected": "safe" }
+  ]
+}
