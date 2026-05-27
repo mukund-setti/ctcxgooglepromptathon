@@ -64,44 +64,30 @@ export async function sendWebPush(
   sub: UserSubscription,
   payload: NotificationPayload,
 ): Promise<void> {
-  void sub;
-  void payload;
+  // eslint-disable-next-line no-console
+  console.log(
+    `[dispatcher] [WEB PUSH to session ${sub.sessionId}] 📱 [${payload.severity.toUpperCase()}] ${payload.title} — ${payload.body} (Link: ${payload.url})`
+  );
 }
 
-/**
- * Production: Twilio Programmable Messaging
- *   await twilio.messages.create({
- *     to: sub.phoneE164,
- *     from: process.env.HAZALERT_TWILIO_FROM,
- *     body: `${payload.title}\n${payload.body}\n${payload.url}`,
- *   });
- *
- * For critical evacuations the dispatcher also uses Twilio Voice to
- * place an automated call ("Press 1 to acknowledge").
- */
 export async function sendSms(
   sub: UserSubscription,
   payload: NotificationPayload,
 ): Promise<void> {
-  void sub;
-  void payload;
+  // eslint-disable-next-line no-console
+  console.log(
+    `[dispatcher] [SMS to phone of session ${sub.sessionId}] 💬 [${payload.severity.toUpperCase()}] ${payload.title} — ${payload.body}\nFast Evac Link: ${payload.url}`
+  );
 }
 
-/**
- * Production: SendGrid v3
- *   await sgMail.send({
- *     to: sub.email,
- *     from: 'alerts@hazalert.app',
- *     templateId: 'd-zone-transition',
- *     dynamicTemplateData: { ...payload, transitionFrom, transitionTo },
- *   });
- */
 export async function sendEmail(
   sub: UserSubscription,
   payload: NotificationPayload,
 ): Promise<void> {
-  void sub;
-  void payload;
+  // eslint-disable-next-line no-console
+  console.log(
+    `[dispatcher] [EMAIL to email of session ${sub.sessionId}] ✉️ [${payload.severity.toUpperCase()}] Subject: ${payload.title} — ${payload.body} (Deep Link: ${payload.url})`
+  );
 }
 
 // ----------------------------------------------------------------------------

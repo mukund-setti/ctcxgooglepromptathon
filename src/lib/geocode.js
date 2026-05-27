@@ -10,12 +10,9 @@ export async function geocode(query) {
   const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
   url.searchParams.set('address', query);
   url.searchParams.set('key', KEY);
-  // Bias to Orange County, CA for hackathon demo addresses
+  // Bias search to US region
   url.searchParams.set('region', 'us');
-  url.searchParams.set(
-    'bounds',
-    '33.65,-118.10|33.90,-117.80',
-  );
+
 
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`Geocoding HTTP ${res.status}`);

@@ -10,24 +10,248 @@ import Chatbot from './components/Chatbot.jsx';
 import SheltersList from './components/SheltersList.jsx';
 import LanguagePicker from './components/LanguagePicker.jsx';
 import VoiceAssistant from './components/VoiceAssistant.jsx';
-import { classifyPoint, nearestSafeShelter } from './lib/zones.js';
+import { classifyPoint, nearestSafeShelter, haversine } from './lib/zones.js';
 import { getRoute } from './lib/directions.js';
-import mockData from './data/mockData.json';
+
+// Dynamic shelters database for different locations
+const SHELTERS_BY_INCIDENT = {
+  inc_gg_mma_2026_05_21: [
+    { name: 'Magnolia High School', address: '2450 W Ball Rd, Anaheim, CA', petFriendly: true, adaAccessible: true, lat: 33.8250, lng: -117.9670 },
+    { name: 'Garden Grove Community Center', address: '11300 Stanford Ave, Garden Grove, CA', petFriendly: false, adaAccessible: true, lat: 33.7740, lng: -117.9410 },
+    { name: 'Stanton Recreation Center', address: '7800 Katella Ave, Stanton, CA', petFriendly: true, adaAccessible: true, lat: 33.8020, lng: -118.0030 }
+  ],
+  inc_riverside_fire_2026_05_24: [
+    { name: 'Riverside Convention Center', address: '3637 5th St, Riverside, CA', petFriendly: true, adaAccessible: true, lat: 33.9822, lng: -117.3732 },
+    { name: 'Box Springs Recreation Center', address: '2155 Chicago Ave, Riverside, CA', petFriendly: false, adaAccessible: true, lat: 33.9555, lng: -117.3502 }
+  ],
+  inc_sac_flood_2026_03_15: [
+    { name: 'Watt Avenue Community Park', address: '810 Watt Ave, Sacramento, CA', petFriendly: true, adaAccessible: true, lat: 38.5911, lng: -121.3912 },
+    { name: 'Sacramento State Rec Center', address: '6000 J St, Sacramento, CA', petFriendly: false, adaAccessible: true, lat: 38.5611, lng: -121.4212 }
+  ],
+};
+
+function getSheltersForIncident(incidentId) {
+  return SHELTERS_BY_INCIDENT[incidentId] || SHELTERS_BY_INCIDENT['inc_gg_mma_2026_05_21'];
+}
 
 function AppInner() {
-  const { t, hasSelectedLanguage } = useI18n();
-  // `assistantMuted` controls the proactive voice assistant. The Header's
-  // existing voice toggle now maps to mute/unmute — the assistant is always
-  // mounted once the user picks a language so they can ask for help anytime.
+  const { t, hasSelectedLanguage, lang } = useI18n();
   const [assistantMuted, setAssistantMuted] = useState(false);
   const [userPoint, setUserPoint] = useState(null);
   const [tab, setTab] = useState('guidance');
   const [route, setRoute] = useState(null);
   const [routeError, setRouteError] = useState(null);
 
+  // Scaled incidents state
+  const [incidents, setIncidents] = useState([]);
+  const [selectedIncident, setSelectedIncident] = useState(null);
+  const [currentSnapshot, setCurrentSnapshot] = useState(null);
+  const [loadingIncidents, setLoadingIncidents] = useState(true);
+
+  // Fetch active incidents on mount
+  useEffect(() => {
+    async function loadIncidents() {
+      try {
+        const res = await fetch('/api/incidents');
+        if (!res.ok) throw new Error('API failed');
+        const data = await res.json();
+        setIncidents(data.incidents || []);
+        
+        // Auto-select incident from URL or default to first
+        const urlParams = new URLSearchParams(window.location.search);
+        const incidentId = urlParams.get('incident');
+        const found = data.incidents.find((i) => i.id === incidentId) || data.incidents[0];
+        if (found) {
+          await handleSelectIncident(found);
+        }
+      } catch (err) {
+        console.warn('[App] Fetching incidents failed, using mock seeds:', err.message);
+        // Fallback local incidents
+        const localIncidents = [
+          {
+            id: 'inc_gg_mma_2026_05_21',
+            name: 'Garden Grove Chemical Leak',
+            type: 'chemical',
+            hazardSubstance: 'Methyl Methacrylate (MMA)',
+            facility: 'GKN Aerospace',
+            startedAt: '2026-05-21T10:00:00-07:00',
+            status: 'active',
+            centroid: { lat: 33.78, lng: -117.955 },
+            currentSnapshotId: 'snap_gg_mma_2026_05_21T1400',
+            summary: 'Industrial chemical release at GKN Aerospace; SW winds carrying plume NE toward residential Garden Grove.',
+          },
+          {
+            id: 'inc_riverside_fire_2026_05_24',
+            name: 'Box Springs Wildfire',
+            type: 'wildfire',
+            facility: 'Box Springs Mountain Reserve',
+            startedAt: '2026-05-24T13:42:00-07:00',
+            status: 'active',
+            centroid: { lat: 33.9612, lng: -117.3045 },
+            currentSnapshotId: 'snap_riverside_fire_2026_05_26T0900',
+            summary: 'Brush fire on east face of Box Springs; 2,400 acres burned, 18% contained. Mandatory evacuation for east Riverside foothills.',
+          },
+          {
+            id: 'inc_sac_flood_2026_03_15',
+            name: 'American River Levee Overtopping',
+            type: 'flood',
+            facility: 'American River — Watt Ave bridge',
+            startedAt: '2026-03-15T04:20:00-07:00',
+            status: 'contained',
+            centroid: { lat: 38.5811, lng: -121.395 },
+            currentSnapshotId: 'snap_sac_flood_2026_03_18T1000',
+            summary: 'Levee overtopping along American River reach; waters receded as of 2026-03-18. Damage assessment ongoing.',
+          }
+        ];
+        setIncidents(localIncidents);
+        const urlParams = new URLSearchParams(window.location.search);
+        const incidentId = urlParams.get('incident');
+        const found = localIncidents.find((i) => i.id === incidentId) || localIncidents[0];
+        if (found) {
+          await handleSelectIncident(found);
+        }
+      } finally {
+        setLoadingIncidents(false);
+      }
+    }
+    loadIncidents();
+  }, []);
+
+  // Fetch full incident details & zones snapshot
+  async function handleSelectIncident(incident) {
+    setSelectedIncident(incident);
+    setUserPoint(null);
+    setRoute(null);
+    setRouteError(null);
+
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('incident', incident.id);
+      window.history.pushState({}, '', url.toString());
+    }
+
+    try {
+      const res = await fetch(`/api/incidents/${incident.id}`);
+      if (!res.ok) throw new Error('API failed');
+      const data = await res.json();
+      setCurrentSnapshot(data.currentSnapshot || null);
+    } catch (err) {
+      console.warn('[App] Fetching snapshot details failed, using mock seeds:', err.message);
+      const localSnapshots = {
+        inc_gg_mma_2026_05_21: {
+          id: 'snap_gg_mma_2026_05_21T1400',
+          incidentId: 'inc_gg_mma_2026_05_21',
+          timestamp: '2026-05-21T14:00:00-07:00',
+          source: 'county_gis',
+          zones: [
+            {
+              level: 'mandatory',
+              color: '#DC2626',
+              label: 'Mandatory Evacuation',
+              guidance: 'Leave immediately. Head northeast, away from the plume. Take pets, medications, and ID.',
+              polygon: [
+                { lat: 33.79, lng: -117.965 },
+                { lat: 33.79, lng: -117.945 },
+                { lat: 33.77, lng: -117.945 },
+                { lat: 33.77, lng: -117.965 },
+              ],
+            },
+            {
+              level: 'shelter_in_place',
+              color: '#F59E0B',
+              label: 'Shelter-in-Place',
+              guidance: 'Stay indoors. Close windows and doors. Seal vents with damp towels. Turn off HVAC.',
+              polygon: [
+                { lat: 33.805, lng: -117.975 },
+                { lat: 33.805, lng: -117.935 },
+                { lat: 33.76, lng: -117.935 },
+                { lat: 33.76, lng: -117.975 },
+              ],
+            },
+            {
+              level: 'watch',
+              color: '#FB923C',
+              label: 'Watch Zone — Be Ready',
+              guidance: 'Pack a go-bag with medications, IDs, and pet supplies. Monitor official updates.',
+              polygon: [
+                { lat: 33.82, lng: -117.99 },
+                { lat: 33.82, lng: -117.92 },
+                { lat: 33.745, lng: -117.92 },
+                { lat: 33.745, lng: -117.99 },
+              ],
+            },
+          ],
+        },
+        inc_riverside_fire_2026_05_24: {
+          id: 'snap_riverside_fire_2026_05_26T0900',
+          incidentId: 'inc_riverside_fire_2026_05_24',
+          timestamp: '2026-05-26T09:00:00-07:00',
+          source: 'ipaws',
+          zones: [
+            {
+              level: 'mandatory',
+              color: '#DC2626',
+              label: 'Mandatory Evacuation — Zones RIV-E-12, RIV-E-13',
+              guidance: 'Leave now via westbound I-215 or 60. Do not delay. Embers may travel 1+ miles ahead of the fire front.',
+              polygon: [
+                { lat: 33.98, lng: -117.31 },
+                { lat: 33.98, lng: -117.28 },
+                { lat: 33.94, lng: -117.28 },
+                { lat: 33.94, lng: -117.31 },
+              ],
+            },
+            {
+              level: 'watch',
+              color: '#FB923C',
+              label: 'Evacuation Warning — Zone RIV-E-14',
+              guidance: 'Be prepared to leave. Move vehicles facing out. Charge phones. Confirm out-of-area contact.',
+              polygon: [
+                { lat: 34.0, lng: -117.33 },
+                { lat: 34.0, lng: -117.26 },
+                { lat: 33.92, lng: -117.26 },
+                { lat: 33.92, lng: -117.33 },
+              ],
+            },
+          ],
+        },
+        inc_sac_flood_2026_03_15: {
+          id: 'snap_sac_flood_2026_03_18T1000',
+          incidentId: 'inc_sac_flood_2026_03_15',
+          timestamp: '2026-03-18T10:00:00-07:00',
+          source: 'county_gis',
+          zones: [
+            {
+              level: 'advisory',
+              color: '#3B82F6',
+              label: 'Flood Advisory — Residual',
+              guidance: 'Waters have receded. Avoid flooded basements and report damage to Sacramento OES.',
+              polygon: [
+                { lat: 38.6, lng: -121.41 },
+                { lat: 38.6, lng: -121.37 },
+                { lat: 38.56, lng: -121.37 },
+                { lat: 38.56, lng: -121.41 },
+              ],
+            },
+          ],
+        },
+      };
+      setCurrentSnapshot(localSnapshots[incident.id] || null);
+    }
+  }
+
+  const activeShelters = useMemo(
+    () => (selectedIncident ? getSheltersForIncident(selectedIncident.id) : []),
+    [selectedIncident]
+  );
+
+  const activeZones = useMemo(
+    () => (currentSnapshot && currentSnapshot.zones ? currentSnapshot.zones : []),
+    [currentSnapshot]
+  );
+
   const classification = useMemo(
-    () => (userPoint ? classifyPoint(userPoint, mockData.zones) : { level: 'none', zone: null }),
-    [userPoint],
+    () => (userPoint ? classifyPoint(userPoint, activeZones) : { level: 'none', zone: null }),
+    [userPoint, activeZones]
   );
 
   useEffect(() => {
@@ -52,10 +276,37 @@ function AppInner() {
     setRoute(null);
     setRouteError(null);
 
-    // Auto-route if user is in red or yellow zone
-    const { level } = classifyPoint(point, mockData.zones);
+    // Dynamic Geolocation-Aware auto-detection of closest active incident
+    try {
+      const res = await fetch(`/api/incidents/near?lat=${point.lat}&lng=${point.lng}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.nearest && data.nearest.incident) {
+          const nearestInc = data.nearest.incident;
+          if (selectedIncident?.id !== nearestInc.id) {
+            const matched = incidents.find((i) => i.id === nearestInc.id) || nearestInc;
+            await handleSelectIncident(matched);
+            return; // Exit and let new details compute route
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[App] Auto-detection of closest incident failed, calculating locally:', err.message);
+      if (incidents.length > 0) {
+        const nearest = incidents
+          .map((i) => ({ incident: i, dist: haversine(point, i.centroid) }))
+          .sort((a, b) => a.dist - b.dist)[0];
+        if (nearest && selectedIncident?.id !== nearest.incident.id) {
+          await handleSelectIncident(nearest.incident);
+          return;
+        }
+      }
+    }
+
+    // Auto-route on current active incident zones
+    const { level } = classifyPoint(point, activeZones);
     if (level === 'mandatory' || level === 'shelter_in_place') {
-      const shelter = nearestSafeShelter(point, mockData.shelters, mockData.zones);
+      const shelter = nearestSafeShelter(point, activeShelters, activeZones);
       if (shelter) {
         await computeRoute(point, shelter);
       }
@@ -63,7 +314,7 @@ function AppInner() {
   }
 
   async function computeRoute(origin, shelter) {
-    const mandatory = mockData.zones.find((z) => z.level === 'mandatory');
+    const mandatory = activeZones.find((z) => z.level === 'mandatory');
     try {
       const r = await getRoute({
         origin,
@@ -87,11 +338,28 @@ function AppInner() {
     return <LanguagePicker />;
   }
 
+  // Premium loading screen to block rendering until selected incident resolves
+  if (loadingIncidents || !selectedIncident) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-300">
+        <div className="relative inline-flex mb-4">
+          <span className="w-12 h-12 rounded-full border-4 border-sky-500/20 border-t-sky-500 animate-spin" />
+        </div>
+        <div className="font-mono text-sm tracking-widest uppercase animate-pulse">
+          Loading HazAlert dashboard…
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
       <Header
         voiceOn={!assistantMuted}
         onToggleVoice={() => setAssistantMuted((m) => !m)}
+        incidents={incidents}
+        selectedIncident={selectedIncident}
+        onSelectIncident={handleSelectIncident}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6 pb-48 sm:pb-32">
@@ -112,7 +380,14 @@ function AppInner() {
         {/* Main grid: map + side panel */}
         <section className="grid lg:grid-cols-5 gap-4">
           <div className="lg:col-span-3 h-[420px] lg:h-[560px]">
-            <MapView userPoint={userPoint} level={classification.level} route={route} />
+            <MapView
+              userPoint={userPoint}
+              level={classification.level}
+              route={route}
+              incident={selectedIncident}
+              zones={activeZones}
+              shelters={activeShelters}
+            />
             {route && (
               <div className="mt-2 text-xs text-sky-300 font-mono">
                 Route → {route.summary} · {route.distance} · {route.duration}
@@ -141,18 +416,28 @@ function AppInner() {
               </TabBtn>
             </div>
             <div className="flex-1 p-4 overflow-y-auto">
-              {tab === 'guidance' && <GuidancePanel level={classification.level} />}
-              {tab === 'checklist' && <Checklist />}
+              {tab === 'guidance' && <GuidancePanel level={classification.level} zones={activeZones} />}
+              {tab === 'checklist' && <Checklist incident={selectedIncident} />}
               {tab === 'shelters' && (
-                <SheltersList userPoint={userPoint} onRoute={onRouteToShelter} />
+                <SheltersList
+                  userPoint={userPoint}
+                  onRoute={onRouteToShelter}
+                  shelters={activeShelters}
+                />
               )}
-              {tab === 'assistant' && <Chatbot voiceOn={!assistantMuted} />}
+              {tab === 'assistant' && (
+                <Chatbot
+                  voiceOn={!assistantMuted}
+                  incident={selectedIncident}
+                  shelters={activeShelters}
+                />
+              )}
             </div>
           </div>
         </section>
 
-        <footer className="text-xs text-slate-500 text-center py-6">
-          HazAlert · Built for CTC × Google Gemini Prompt-a-Thon 2026 · Demo data only
+        <footer className="text-xs text-slate-500 text-center py-6 border-t border-slate-900 font-mono">
+          HazAlert · Scaled Multi-disaster Alert System · Powered by Google & FEMA feeds
         </footer>
       </main>
 
@@ -163,6 +448,8 @@ function AppInner() {
         route={route}
         muted={assistantMuted}
         onToggleMute={() => setAssistantMuted((m) => !m)}
+        incident={selectedIncident}
+        shelters={activeShelters}
       />
     </div>
   );

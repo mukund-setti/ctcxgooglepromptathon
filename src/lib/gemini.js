@@ -39,11 +39,18 @@ async function callGemini({ systemInstruction, contents, responseMimeType }) {
 
 // ---------- Chatbot ----------
 
-const CHATBOT_SYSTEM_PROMPT = (lang) => {
+const CHATBOT_SYSTEM_PROMPT = (incident, shelters = [], lang) => {
+  const name = incident?.name || 'an active hazard';
+  const type = incident?.type || 'emergency';
+  const substance = incident?.hazardSubstance || '';
+  const facility = incident?.facility || '';
+  const summary = incident?.summary || '';
+
   let prompt = `
-You are the HazAlert assistant for the Garden Grove chemical leak (May 21, 2026).
-A tank of methyl methacrylate (MMA) at GKN Aerospace is at risk of rupture.
-Over 50,000 residents are under evacuation orders.
+You are the HazAlert assistant for the active emergency: "${name}" (${type} hazard).
+${facility ? `Originating facility/location: ${facility}.` : ''}
+${substance ? `Hazardous substance/material involved: ${substance}.` : ''}
+Brief details: ${summary}
 
 Rules:
 - Plain, calm, clear language at 8th-grade reading level.
@@ -52,11 +59,20 @@ Rules:
 - End urgent answers with one concrete next step.
 - For exposure symptoms, list simply, then say "If you have these symptoms, call 911 immediately."
 - Respond in: ${LANG_NAME[lang] || 'English'}.
-
-Chemical facts: MMA is flammable, irritates eyes/skin/lungs, smells sweet/fruity.
-Shelters: Magnolia HS (pet-friendly, ADA), Garden Grove Community Center (ADA, no pets), Stanton Rec Center (pet-friendly, ADA).
-Tone: calm, warm, urgent when needed.
+- Tone: calm, warm, urgent when needed.
 `.trim();
+
+  if (shelters && shelters.length > 0) {
+    const shelterDetails = shelters
+      .map(
+        (s) =>
+          `- ${s.name} at ${s.address || 'Address'}. Features: ${
+            s.petFriendly ? '🐾 Pet-friendly' : 'No pets'
+          }, ${s.adaAccessible ? '♿ ADA accessible' : 'Not ADA'}`
+      )
+      .join('\n');
+    prompt += `\n\nActive Evacuation Shelters available for this incident:\n${shelterDetails}`;
+  }
 
   try {
     const userStateRaw = typeof window !== 'undefined' ? localStorage.getItem('hazalert_user_state') : null;
@@ -100,9 +116,9 @@ Tone: calm, warm, urgent when needed.
       }
       prompt += `\n\nUse this context to tailor and personalize your safety advice directly. For example:`;
       prompt += `\n- If current threat level is MANDATORY, emphasize immediate evacuation, suggest heading to a shelter, and advise on their specific evacuation route.`;
-      prompt += `\n- If they have pets, highlight pet-friendly shelters (e.g. Magnolia HS or Stanton Rec Center) and remind them to pack pet food/leashes/carriers.`;
+      prompt += `\n- If they have pets, highlight pet-friendly shelters and remind them to pack pet food/leashes/carriers.`;
       prompt += `\n- If they have infants/children, remind them to pack formula/diapers/baby supplies.`;
-      prompt += `\n- If they have elderly members, remind them to assist with mobility and check for ADA-compliant shelters (all active shelters except Garden Grove Community Center are pet-friendly & ADA; Garden Grove Community Center has ADA but no pets).`;
+      prompt += `\n- If they have elderly members, remind them to assist with mobility and check for ADA-compliant shelters.`;
       prompt += `\n- If they require daily medications, prioritize packing essential prescriptions first.`;
       prompt += `\n- Refer to their current address/status when appropriate to confirm you know where they are.`;
     }
@@ -113,7 +129,7 @@ Tone: calm, warm, urgent when needed.
   return prompt;
 };
 
-export async function chatbotReply({ history, userMessage, lang = 'en' }) {
+export async function chatbotReply({ history, userMessage, incident, shelters = [], lang = 'en' }) {
   const contents = [
     ...history.map((m) => ({
       role: m.role === 'user' ? 'user' : 'model',
@@ -122,18 +138,25 @@ export async function chatbotReply({ history, userMessage, lang = 'en' }) {
     { role: 'user', parts: [{ text: userMessage }] },
   ];
   return callGemini({
-    systemInstruction: CHATBOT_SYSTEM_PROMPT(lang),
+    systemInstruction: CHATBOT_SYSTEM_PROMPT(incident, shelters, lang),
     contents,
   });
 }
 
 // ---------- Checklist generator ----------
 
-const CHECKLIST_SYSTEM_PROMPT = `
+const CHECKLIST_SYSTEM_PROMPT = (incident) => {
+  const name = incident?.name || 'active hazard';
+  const type = incident?.type || 'emergency';
+  const substance = incident?.hazardSubstance || '';
+
+  return `
 Generate a personalized evacuation checklist as STRICT JSON ONLY (no preamble, no markdown fence).
 Schema: { "items": [{ "priority": number, "task": string, "why": string, "estimatedTime": string }] }
 
-Chemical context: methyl methacrylate (MMA) — flammable, irritates eyes/skin/lungs, sweet fruity smell.
+Hazard Context: This is a ${type} emergency (${name})${
+    substance ? ` involving ${substance}` : ''
+  }.
 
 Rules:
 - 10_minutes  = max 5 life-critical items.
@@ -145,11 +168,12 @@ Rules:
 - If household has elderly members, include hearing aids + glasses + mobility aids.
 - Sort by ascending priority (1 = most urgent).
 `.trim();
+};
 
-export async function generateChecklist(household) {
+export async function generateChecklist(household, incident) {
   const userMsg = `Household attributes: ${JSON.stringify(household)}`;
   const raw = await callGemini({
-    systemInstruction: CHECKLIST_SYSTEM_PROMPT,
+    systemInstruction: CHECKLIST_SYSTEM_PROMPT(incident),
     contents: [{ role: 'user', parts: [{ text: userMsg }] }],
     responseMimeType: 'application/json',
   });

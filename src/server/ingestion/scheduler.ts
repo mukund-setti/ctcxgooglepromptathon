@@ -13,7 +13,7 @@ import {
 } from './sources';
 import * as storage from '../storage/firestore';
 import { notifyZoneTransition } from '../notifications/dispatcher';
-import type { ZoneSnapshot, UserSubscription } from '../../types/incident';
+import type { ZoneSnapshot, UserSubscription, LatLng } from '../../types/incident';
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -92,18 +92,52 @@ async function notifySubscribers(
       const newLevel = pointInZones(sub, newSnapshot);
       if (oldLevel === newLevel) return;
       await notifyZoneTransition(sub, oldLevel, newLevel, newSnapshot.incidentId);
+
+      // Update subscriber state
+      sub.lastKnownZoneLevel = newLevel === 'safe' ? undefined : newLevel;
+      sub.lastNotifiedAt = new Date().toISOString();
+      await storage.saveSubscription(sub);
     }),
   );
 }
 
+function pointInPolygon(point: { lat: number; lng: number }, polygon: LatLng[]): boolean {
+  const { lat, lng } = point;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lng, yi = polygon[i].lat;
+    const xj = polygon[j].lng, yj = polygon[j].lat;
+    const intersect =
+      (yi > lat) !== (yj > lat) &&
+      lng < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 /**
- * Stub point-in-polygon — production uses @turf/boolean-point-in-polygon.
+ * High-fidelity point-in-polygon zone checks.
  */
 function pointInZones(
-  _sub: UserSubscription,
-  _snapshot: ZoneSnapshot | null,
+  sub: UserSubscription,
+  snapshot: ZoneSnapshot | null,
 ): 'mandatory' | 'shelter_in_place' | 'watch' | 'advisory' | 'safe' {
-  // TODO: real implementation via turf. Skeleton stub.
+  if (!snapshot || !snapshot.zones) return 'safe';
+
+  const levels: Array<'mandatory' | 'shelter_in_place' | 'watch' | 'advisory'> = [
+    'mandatory',
+    'shelter_in_place',
+    'watch',
+    'advisory',
+  ];
+
+  for (const lvl of levels) {
+    const zone = snapshot.zones.find((z) => z.level === lvl);
+    if (zone && pointInPolygon({ lat: sub.lat, lng: sub.lng }, zone.polygon)) {
+      return lvl;
+    }
+  }
+
   return 'safe';
 }
 

@@ -1,11 +1,10 @@
 import { PawPrint, Accessibility, Navigation } from 'lucide-react';
 import { useI18n } from '../lib/i18n.jsx';
 import { haversine } from '../lib/zones.js';
-import mockData from '../data/mockData.json';
 
-export default function SheltersList({ userPoint, onRoute }) {
+export default function SheltersList({ userPoint, onRoute, shelters = [] }) {
   const { t } = useI18n();
-  const enriched = mockData.shelters
+  const enriched = (shelters || [])
     .map((s) => ({
       ...s,
       distance: userPoint ? haversine(userPoint, s) : null,

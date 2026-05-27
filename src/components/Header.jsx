@@ -1,7 +1,8 @@
 import { AlertTriangle, Volume2, VolumeX, Globe } from 'lucide-react';
 import { useI18n, LANGUAGES } from '../lib/i18n.jsx';
+import IncidentSelector from './IncidentSelector.jsx';
 
-export default function Header({ voiceOn, onToggleVoice }) {
+export default function Header({ voiceOn, onToggleVoice, incidents, selectedIncident, onSelectIncident }) {
   const { t, lang, setLang, translating } = useI18n();
 
   return (
@@ -12,12 +13,15 @@ export default function Header({ voiceOn, onToggleVoice }) {
             <AlertTriangle className="w-7 h-7 text-red-500" aria-hidden="true" />
             <span className="absolute inset-0 rounded-full border-2 border-red-500/60 animate-pulse-ring" />
           </span>
-          <span className="font-mono font-bold text-xl tracking-tight">{t.appName}</span>
+          <span className="font-mono font-bold text-xl tracking-tight hidden sm:inline">{t.appName}</span>
         </div>
 
-        <div className="hidden md:flex items-center gap-2 text-sm text-red-300 font-mono">
-          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          {t.liveIncident}
+        <div className="flex items-center justify-center">
+          <IncidentSelector
+            incidents={incidents}
+            selectedIncident={selectedIncident}
+            onSelectIncident={onSelectIncident}
+          />
         </div>
 
         <div className="flex items-center gap-3">

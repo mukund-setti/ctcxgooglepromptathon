@@ -21,6 +21,10 @@ const STYLES = {
     bg: 'bg-gradient-to-br from-emerald-700 to-emerald-600 text-white border-emerald-400',
     Icon: ShieldCheck,
   },
+  advisory: {
+    bg: 'bg-gradient-to-br from-blue-700 to-blue-600 text-white border-blue-400',
+    Icon: ShieldCheck,
+  },
   none: {
     bg: 'bg-slate-800 text-slate-300 border-slate-700',
     Icon: AlertOctagon,
@@ -30,7 +34,7 @@ const STYLES = {
 export default function StatusCard({ level, address }) {
   const { t, lang } = useI18n();
   const key = level || 'none';
-  const style = STYLES[key];
+  const style = STYLES[key] || STYLES['none'];
   const { Icon } = style;
 
   const titleMap = {
@@ -38,6 +42,7 @@ export default function StatusCard({ level, address }) {
     shelter_in_place: t.statusShelter,
     watch: t.statusWatch,
     safe: t.statusSafe,
+    advisory: 'FLOOD ADVISORY',
     none: t.noAddress,
   };
   const actionMap = {
@@ -45,6 +50,7 @@ export default function StatusCard({ level, address }) {
     shelter_in_place: t.statusShelterAction,
     watch: t.statusWatchAction,
     safe: t.statusSafeAction,
+    advisory: 'Stay alert and monitor local flood updates.',
     none: '',
   };
 

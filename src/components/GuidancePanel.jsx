@@ -1,9 +1,8 @@
 import { Volume2 } from 'lucide-react';
 import { useI18n } from '../lib/i18n.jsx';
 import { speak } from '../lib/tts.js';
-import mockData from '../data/mockData.json';
 
-export default function GuidancePanel({ level }) {
+export default function GuidancePanel({ level, zones = [] }) {
   const { t, lang } = useI18n();
   if (!level || level === 'safe' || level === 'none') {
     return (
@@ -12,7 +11,7 @@ export default function GuidancePanel({ level }) {
       </div>
     );
   }
-  const zone = mockData.zones.find((z) => z.level === level);
+  const zone = (zones || []).find((z) => z.level === level);
   if (!zone) return null;
 
   return (

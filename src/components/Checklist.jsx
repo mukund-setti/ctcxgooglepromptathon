@@ -4,7 +4,7 @@ import { useI18n } from '../lib/i18n.jsx';
 import { generateChecklist } from '../lib/gemini.js';
 import { speak } from '../lib/tts.js';
 
-export default function Checklist() {
+export default function Checklist({ incident }) {
   const { t, lang } = useI18n();
   const [household, setHousehold] = useState(() => {
     try {
@@ -28,6 +28,12 @@ export default function Checklist() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Clear checklist items when changing hazards
+  useEffect(() => {
+    setItems([]);
+    setChecked({});
+  }, [incident?.id]);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('hazalert_household', JSON.stringify(household));
@@ -38,7 +44,7 @@ export default function Checklist() {
     setLoading(true);
     setError(null);
     try {
-      const result = await generateChecklist(household);
+      const result = await generateChecklist(household, incident);
       setItems(result);
       setChecked({});
     } catch (err) {

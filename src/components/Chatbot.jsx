@@ -4,13 +4,18 @@ import { useI18n } from '../lib/i18n.jsx';
 import { chatbotReply } from '../lib/gemini.js';
 import { speak } from '../lib/tts.js';
 
-export default function Chatbot({ voiceOn }) {
+export default function Chatbot({ voiceOn, incident, shelters }) {
   const { t, lang } = useI18n();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const endRef = useRef(null);
+
+  // Clear messages when incident changes so chats don't leak between disasters
+  useEffect(() => {
+    setMessages([]);
+  }, [incident?.id]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -28,6 +33,8 @@ export default function Chatbot({ voiceOn }) {
       const reply = await chatbotReply({
         history: messages,
         userMessage: text,
+        incident,
+        shelters,
         lang,
       });
       setMessages([...next, { role: 'bot', text: reply }]);

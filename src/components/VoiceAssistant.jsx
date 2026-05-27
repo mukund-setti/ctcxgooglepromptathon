@@ -64,7 +64,7 @@ function buildScript({ t, level, address, hasLocation, route }) {
   return parts.filter(Boolean).join(' ');
 }
 
-export default function VoiceAssistant({ level, address, hasLocation, route, muted, onToggleMute }) {
+export default function VoiceAssistant({ level, address, hasLocation, route, muted, onToggleMute, incident, shelters }) {
   const { t, lang } = useI18n();
   const [speaking, setSpeaking] = useState(false);
   const [listening, setListening] = useState(false);
@@ -96,6 +96,11 @@ export default function VoiceAssistant({ level, address, hasLocation, route, mut
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, thinking, chatOpen]);
+
+  // Clear messages when incident changes so chats don't leak between disasters
+  useEffect(() => {
+    setMessages([]);
+  }, [incident?.id]);
 
   // Auto-narrate situation changes when not muted.
   // We debounce because a single user action (entering an address inside a
@@ -174,7 +179,13 @@ export default function VoiceAssistant({ level, address, hasLocation, route, mut
     setInput('');
     setThinking(true);
     try {
-      const out = await chatbotReply({ history, userMessage: trimmed, lang });
+      const out = await chatbotReply({
+        history,
+        userMessage: trimmed,
+        incident,
+        shelters,
+        lang,
+      });
       setMessages([...next, { role: 'bot', text: out }]);
       if (!muted) speak(out, lang);
     } catch (err) {
