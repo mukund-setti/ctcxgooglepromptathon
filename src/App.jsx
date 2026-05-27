@@ -136,7 +136,7 @@ function AppInner() {
     if (fieldsUpdated.length > 0 || triggerChecklist) {
       if (fieldsUpdated.length > 0) {
         setHighlightedFields(newHighlights);
-        setToastMessage(`✨ Voice assistant populated ${fieldsUpdated.length} field${fieldsUpdated.length > 1 ? 's' : ''}: ${fieldsUpdated.join(', ')}`);
+        setToastMessage(`Voice assistant populated ${fieldsUpdated.length} field${fieldsUpdated.length > 1 ? 's' : ''}: ${fieldsUpdated.join(', ')}`);
       }
 
       if (triggerChecklist) {
