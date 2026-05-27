@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HazAlert — Emergency Evacuation Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #0f1a2e;
+    --panel-2: #14223b;
+    --border: #1f3056;
+    --text: #e8eef9;
+    --text-dim: #93a4c2;
+    --red: #dc2626;
+    --red-deep: #991b1b;
+    --amber: #f59e0b;
+    --orange: #fb923c;
+    --green: #16a34a;
+    --blue: #2563eb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+  }
+
+  /* ============ HEADER ============ */
+  header {
+    height: 64px;
+    background: var(--panel);
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 24px;
+    position: relative;
+    z-index: 1000;
+  }
+  .logo {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-mark {
+    width: 28px;
+    height: 28px;
+    background: var(--red);
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+    font-size: 16px;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+    animation: pulse-mark 2s infinite;
+  }
+  @keyframes pulse-mark {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2); }
+    50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.05); }
+  }
+  .incident-banner {
+    flex: 1;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .incident-banner strong { color: var(--red); }
+  .header-controls { display: flex; gap: 12px; align-items: center; }
+  select, .voice-toggle {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    min-height: 44px;
+    transition: all 0.15s;
+  }
+  select:hover, .voice-toggle:hover { background: var(--border); }
+  .voice-toggle.active {
+    background: var(--blue);
+    border-color: var(--blue);
+  }
+
+  /* ============ HERO ============ */
+  .hero {
+    padding: 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: stretch;
+  }
+  .lookup-card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .lookup-card h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+  .input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .address-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 14px 16px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 15px;
+    min-height: 44px;
+  }
+  .address-input:focus { outline: 2px solid var(--blue); }
+  .btn-primary, .btn-secondary {
+    border: none;
+    padding: 14px 20px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 14px;
+    min-height: 44px;
+    transition: all 0.15s;
+  }
+  .btn-primary { background: var(--red); color: white; }
+  .btn-primary:hover { background: var(--red-deep); }
+  .btn-secondary {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    width: 100%;
+  }
+  .btn-secondary:hover { background: var(--border); }
+  .test-addresses {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .test-addresses div { margin-top: 6px; }
+  .test-link {
+    color: var(--blue);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  /* ============ STATUS CARD ============ */
+  .status-card {
+    padding: 24px;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .status-card.empty {
+    background: var(--panel-2);
+    border-color: var(--border);
+    color: var(--text-dim);
+    align-items: center;
+    text-align: center;
+  }
+  .status-card.red {
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    border-color: #fca5a5;
+    color: white;
+    animation: alert-pulse 1.5s infinite;
+  }
+  .status-card.yellow {
+    background: linear-gradient(135deg, #f59e0b, #b45309);
+    border-color: #fbbf24;
+    color: #1f1300;
+  }
+  .status-card.orange {
+    background: linear-gradient(135deg, #fb923c, #c2410c);
+    border-color: #fdba74;
+    color: white;
+  }
+  .status-card.green {
+    background: linear-gradient(135deg, #16a34a, #14532d);
+    border-color: #86efac;
+    color: white;
+  }
+  @keyframes alert-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6); }
+    50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+  }
+  /* Diagonal stripe pattern for colorblind accessibility */
+  .status-card.red::before,
+  .status-card.yellow::before,
+  .status-card.orange::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 12px,
+      rgba(0, 0, 0, 0.08) 12px,
+      rgba(0, 0, 0, 0.08) 16px
+    );
+    pointer-events: none;
+  }
+  .status-card-content { position: relative; z-index: 1; }
+  .status-icon { font-size: 32px; margin-bottom: 8px; }
+  .status-title {
+    font-size: 22px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .status-subtitle { font-size: 13px; opacity: 0.9; margin-bottom: 14px; }
+  .status-actions { display: flex; gap: 8px; }
+  .icon-btn {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: inherit;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+  }
+  .icon-btn:hover { background: rgba(0, 0, 0, 0.4); }
+
+  /* ============ MAIN ============ */
+  main {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 0;
+    height: calc(100vh - 64px - 200px);
+    min-height: 500px;
+  }
+  #map {
+    height: 100%;
+    background: var(--panel-2);
+    border-right: 1px solid var(--border);
+  }
+  .map-overlay-info {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(15, 26, 46, 0.95);
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--text);
+    z-index: 500;
+    backdrop-filter: blur(8px);
+  }
+  .map-overlay-info div { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    background-image: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.15) 3px, rgba(0,0,0,0.15) 4px);
+  }
+
+  /* ============ SIDE PANEL ============ */
+  .side-panel {
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+  }
+  .tab {
+    flex: 1;
+    padding: 14px;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 2px solid transparent;
+    min-height: 44px;
+  }
+  .tab.active {
+    color: var(--text);
+    border-bottom-color: var(--red);
+    background: var(--panel);
+  }
+  .tab-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .tab-content h3 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+  }
+
+  /* Guidance panel */
+  .guidance-text {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text);
+    padding: 16px;
+    background: var(--panel-2);
+    border-left: 3px solid var(--red);
+    border-radius: 4px;
+    margin-bottom: 16px;
+  }
+  .guidance-text.empty { border-left-color: var(--border); color: var(--text-dim); }
+
+  /* Checklist */
+  .checklist-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    padding: 12px;
+    background: var(--panel-2);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    align-items: start;
+  }
+  .checklist-item input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin-top: 2px;
+    cursor: pointer;
+    accent-color: var(--red);
+  }
+  .checklist-item.checked .task { text-decoration: line-through; opacity: 0.5; }
+  .task { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .why { font-size: 11px; color: var(--text-dim); }
+  .time-est {
+    font-size: 10px;
+    color: var(--text-dim);
+    background: var(--bg);
+    padding: 4px 8px;
+    border-radius: 12px;
+    white-space: nowrap;
+  }
+  .checklist-progress {
+    background: var(--panel-2);
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .checklist-progress-bar {
+    height: 100%;
+    background: var(--green);
+    transition: width 0.3s;
+  }
+
+  /* Chatbot */
+  .chat-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .chat-msg {
+    padding: 12px 14px;
+    border-radius: 8px;
+    max-width: 90%;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .chat-msg.user {
+    background: var(--blue);
+    color: white;
+    align-self: flex-end;
+  }
+  .chat-msg.bot {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    align-self: flex-start;
+    position: relative;
+  }
+  .chat-msg .speak-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: 8px;
+  }
+  .starter-q {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 20px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    margin: 4px 4px 4px 0;
+    display: inline-block;
+  }
+  .starter-q:hover { background: var(--border); }
+  .chat-input-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .chat-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    min-height: 40px;
+  }
+
+  /* Footer note */
+  .footer-note {
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 8px 24px;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: center;
+    letter-spacing: 1px;
+  }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; }
+    main { grid-template-columns: 1fr; height: auto; }
+    #map { height: 400px; }
+  }
+
+  /* Focus styles for keyboard nav */
+  *:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+</style>
+</head>
+<body>
+
+<header role="banner">
+  <div class="logo">
+    <span class="logo-mark" aria-hidden="true">⚠</span>
+    HazAlert
+  </div>
+  <div class="incident-banner">
+    <strong>● ACTIVE</strong> · GARDEN GROVE CHEMICAL LEAK · MMA TANK · GKN AEROSPACE
+  </div>
+  <div class="header-controls">
+    <label for="language" class="sr-only">Select language</label>
+    <select id="language" aria-label="Select language">
+      <option value="en-US">English</option>
+      <option value="es-ES">Español</option>
+      <option value="vi-VN">Tiếng Việt</option>
+      <option value="ko-KR">한국어</option>
+      <option value="fil-PH">Tagalog</option>
+    </select>
+    <button class="voice-toggle" id="voiceToggle" aria-pressed="false" aria-label="Toggle voice mode">
+      🔊 <span id="voiceLabel">Voice OFF</span>
+    </button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="lookup-card">
+    <h2 id="lookupHeading">Check Your Location</h2>
+    <div class="input-row">
+      <input type="text" class="address-input" id="addressInput" placeholder="Enter address or ZIP" aria-labelledby="lookupHeading" />
+      <button class="btn-primary" id="checkBtn">Check</button>
+    </div>
+    <button class="btn-secondary" id="locateBtn">📍 Use my current location</button>
+    <div class="test-addresses">
+      Quick test:
+      <div><span class="test-link" data-test="mandatory">⬛ Mandatory zone</span> · <span class="test-link" data-test="shelter">⬛ Shelter-in-place</span></div>
+      <div><span class="test-link" data-test="watch">⬛ Watch zone</span> · <span class="test-link" data-test="safe">⬛ Safe area</span></div>
+    </div>
+  </div>
+
+  <div class="status-card empty" id="statusCard" aria-live="assertive">
+    <div class="status-card-content">
+      <div class="status-icon">❓</div>
+      <div class="status-title">Enter Your Location</div>
+      <div class="status-subtitle">We'll tell you what to do</div>
+    </div>
+  </div>
+</section>
+
+<main>
+  <div id="map" role="region" aria-label="Evacuation zone map">
+    <div class="map-overlay-info" aria-hidden="true">
+      <div style="font-weight: 700; margin-bottom: 6px;">LEGEND</div>
+      <div><span class="legend-swatch" style="background-color: #dc2626;"></span> Mandatory</div>
+      <div><span class="legend-swatch" style="background-color: #f59e0b;"></span> Shelter in place</div>
+      <div><span class="legend-swatch" style="background-color: #fb923c;"></span> Watch zone</div>
+      <div style="margin-top: 6px; color: #93a4c2;">🌬 Wind: SW → NE</div>
+    </div>
+  </div>
+
+  <aside class="side-panel">
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="guidance" role="tab" aria-selected="true">Guidance</button>
+      <button class="tab" data-tab="checklist" role="tab" aria-selected="false">Checklist</button>
+      <button class="tab" data-tab="chatbot" role="tab" aria-selected="false">Assistant</button>
+    </div>
+
+    <div class="tab-content" id="tab-guidance" role="tabpanel">
+      <h3>What you should do</h3>
+      <div class="guidance-text empty" id="guidanceText">
+        Enter your address above and we'll show personalized guidance based on your location.
+      </div>
+      <button class="icon-btn" id="guidanceSpeakBtn" style="background: var(--panel-2); border: 1px solid var(--border); color: var(--text);">🔊 Read aloud</button>
+    </div>
+
+    <div class="tab-content" id="tab-checklist" role="tabpanel" hidden>
+      <h3>Personalized checklist</h3>
+      <div id="checklistContainer">
+        <div class="checklist-progress"><div class="checklist-progress-bar" id="progressBar" style="width: 0%"></div></div>
+        <div id="checklistItems"></div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-chatbot" role="tabpanel" hidden>
+      <h3>Ask the HazAlert assistant</h3>
+      <div class="chat-messages" id="chatMessages">
+        <div class="chat-msg bot">
+          Hi — I can help with questions about the evacuation, the chemical (MMA), shelters, or what to bring. What's on your mind?
+          <button class="speak-btn" onclick="speak(this.parentNode.firstChild.textContent.trim())">🔊</button>
+        </div>
+      </div>
+      <div>
+        <button class="starter-q" data-q="Is my street in the zone?">Is my street in the zone?</button>
+        <button class="starter-q" data-q="What does MMA smell like?">What does MMA smell like?</button>
+        <button class="starter-q" data-q="Where can I take my dog?">Where can I take my dog?</button>
+      </div>
+      <div class="chat-input-row">
+        <input type="text" class="chat-input" id="chatInput" placeholder="Type your question..." />
+        <button class="btn-primary" id="chatSendBtn">Send</button>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div class="footer-note">
+  PROTOTYPE · DEMO DATA · BUILT FOR CTC × GOOGLE GEMINI PROMPT-A-THON
+</div>
+
+<script>
+// ============ DATA ============
+const ZONES = [
+  {
+    level: "mandatory",
+    color: "#dc2626",
+    label: "MANDATORY EVACUATION",
+    icon: "🚨",
+    guidance: "Leave immediately. Head northeast — away from the chemical plume drift direction. Take medications, IDs, pets, and a damp cloth to cover your nose and mouth. Do not stop to gather extra belongings.",
+    polygon: [[33.79, -117.965], [33.79, -117.945], [33.77, -117.945], [33.77, -117.965]]
+  },
+  {
+    level: "shelter_in_place",
+    color: "#f59e0b",
+    label: "SHELTER IN PLACE",
+    icon: "⚠️",
+    guidance: "Stay indoors. Close all windows and doors immediately. Seal vents with damp towels. Turn off heating and air conditioning. Move to an interior room with no windows. Listen for updates and do not leave until officials say it is safe.",
+    polygon: [[33.805, -117.975], [33.805, -117.935], [33.76, -117.935], [33.76, -117.975]]
+  },
+  {
+    level: "watch",
+    color: "#fb923c",
+    label: "WATCH ZONE — BE READY",
+    icon: "👀",
+    guidance: "You are not currently required to evacuate, but conditions could change. Pack a go-bag now with medications, IDs, pet supplies, water, and a flashlight. Stay near home, charge your phone, and monitor official updates from OCFA.",
+    polygon: [[33.82, -117.99], [33.82, -117.92], [33.745, -117.92], [33.745, -117.99]]
+  }
+];
+
+const TEST_LOCATIONS = {
+  mandatory: { address: "12345 Brookhurst St, Garden Grove, CA", lat: 33.78, lng: -117.955 },
+  shelter:   { address: "9100 Garden Grove Blvd, Garden Grove, CA", lat: 33.77, lng: -117.95 },
+  watch:     { address: "8200 Katella Ave, Stanton, CA", lat: 33.805, lng: -117.985 },
+  safe:      { address: "1 Disneyland Way, Anaheim, CA", lat: 33.8121, lng: -117.919 }
+};
+
+const TRANSLATIONS = {
+  "en-US": { voice: "Voice OFF", voiceOn: "Voice ON", check: "Check", locate: "📍 Use my current location", lookupHeading: "Check Your Location" },
+  "es-ES": { voice: "Voz APAGADA", voiceOn: "Voz ACTIVA", check: "Verificar", locate: "📍 Usar mi ubicación", lookupHeading: "Verifique su ubicación" },
+  "vi-VN": { voice: "Tắt giọng", voiceOn: "Bật giọng", check: "Kiểm tra", locate: "📍 Dùng vị trí của tôi", lookupHeading: "Kiểm tra vị trí của bạn" },
+  "ko-KR": { voice: "음성 꺼짐", voiceOn: "음성 켜짐", check: "확인", locate: "📍 내 위치 사용", lookupHeading: "위치 확인" },
+  "fil-PH": { voice: "Boses NAKA-OFF", voiceOn: "Boses NAKA-ON", check: "Tingnan", locate: "📍 Gamitin ang aking lokasyon", lookupHeading: "Tingnan ang iyong lokasyon" }
+};
+
+// ============ STATE ============
+let currentLang = "en-US";
+let voiceOn = false;
+let userMarker = null;
+
+// ============ MAP ============
+const map = L.map('map', { zoomControl: true }).setView([33.78, -117.95], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap',
+  maxZoom: 19
+}).addTo(map);
+
+// Render zone polygons with diagonal stripe pattern via SVG
+ZONES.forEach(z => {
+  const poly = L.polygon(z.polygon, {
+    color: z.color,
+    fillColor: z.color,
+    fillOpacity: 0.35,
+    weight: 3,
+    dashArray: z.level === 'watch' ? '8,4' : null
+  }).addTo(map);
+  poly.bindPopup(`<strong>${z.label}</strong><br><small>${z.guidance.slice(0, 90)}...</small>`);
+});
+
+// ============ ZONE CHECK ============
+function pointInPolygon(point, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [yi, xi] = polygon[i];
+    const [yj, xj] = polygon[j];
+    const intersect = ((xi > point.lng) !== (xj > point.lng))
+      && (point.lat < (yj - yi) * (point.lng - xi) / (xj - xi) + yi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function getZoneForPoint(lat, lng) {
+  const pt = { lat, lng };
+  for (const z of ZONES) {
+    if (pointInPolygon(pt, z.polygon)) return z;
+  }
+  return null;
+}
+
+function updateUserLocation(lat, lng, addressLabel) {
+  if (userMarker) map.removeLayer(userMarker);
+  const zone = getZoneForPoint(lat, lng);
+  const pulseClass = zone ? 'user-pin-pulse' : '';
+  const iconHtml = `<div style="width:22px;height:22px;border-radius:50%;background:#2563eb;border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.4);${zone ? 'animation: alert-pulse 1s infinite;' : ''}"></div>`;
+  const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [22, 22], iconAnchor: [11, 11] });
+  userMarker = L.marker([lat, lng], { icon, title: 'Your location' }).addTo(map);
+  userMarker.bindPopup(`<strong>Your location</strong><br>${addressLabel}`);
+  map.flyTo([lat, lng], 14, { duration: 0.8 });
+  renderStatus(zone, addressLabel);
+}
+
+// ============ STATUS CARD + GUIDANCE ============
+function renderStatus(zone, addressLabel) {
+  const card = document.getElementById('statusCard');
+  const guidanceEl = document.getElementById('guidanceText');
+
+  card.classList.remove('empty', 'red', 'yellow', 'orange', 'green');
+  guidanceEl.classList.remove('empty');
+
+  let title, icon, subtitle, colorClass, guidance, borderColor;
+  if (!zone) {
+    title = "YOU ARE OUTSIDE THE DANGER ZONE";
+    icon = "✅";
+    subtitle = "Stay informed in case zones expand.";
+    colorClass = "green";
+    guidance = "You are currently outside all active evacuation areas. Conditions could still change — turn on watch mode to be notified if zones expand toward your location.";
+    borderColor = "var(--green)";
+  } else {
+    title = zone.label;
+    icon = zone.icon;
+    subtitle = addressLabel;
+    colorClass = zone.level === 'mandatory' ? 'red' : zone.level === 'shelter_in_place' ? 'yellow' : 'orange';
+    guidance = zone.guidance;
+    borderColor = zone.color;
+  }
+
+  card.classList.add(colorClass);
+  card.innerHTML = `
+    <div class="status-card-content">
+      <div class="status-icon" aria-hidden="true">${icon}</div>
+      <div class="status-title">${title}</div>
+      <div class="status-subtitle">${subtitle}</div>
+      <div class="status-actions">
+        <button class="icon-btn" onclick="speak('${title.replace(/'/g, "\\'")}. ${guidance.replace(/'/g, "\\'")}')">🔊 Read aloud</button>
+      </div>
+    </div>
+  `;
+  guidanceEl.textContent = guidance;
+  guidanceEl.style.borderLeftColor = borderColor;
+
+  if (voiceOn) {
+    speak(`${title}. ${guidance}`);
+  }
+}
+
+// ============ GEOCODING (mock with bias toward test locations) ============
+function geocodeAddress(query) {
+  const q = query.toLowerCase().trim();
+  // Try matching test addresses
+  for (const key in TEST_LOCATIONS) {
+    if (TEST_LOCATIONS[key].address.toLowerCase().includes(q.split(',')[0].toLowerCase()) && q.length > 4) {
+      return Promise.resolve(TEST_LOCATIONS[key]);
+    }
+  }
+  // ZIP code mock
+  if (/^\d{5}$/.test(q)) {
+    if (q === "92840" || q === "92843") return Promise.resolve(TEST_LOCATIONS.mandatory);
+    if (q === "92804") return Promise.resolve(TEST_LOCATIONS.shelter);
+    if (q === "90680") return Promise.resolve(TEST_LOCATIONS.watch);
+    return Promise.resolve(TEST_LOCATIONS.safe);
+  }
+  // Default: return safe
+  return Promise.resolve({ ...TEST_LOCATIONS.safe, address: query });
+}
+
+// ============ VOICE ============
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = currentLang;
+  u.rate = 1.0;
+  speechSynthesis.speak(u);
+}
+
+document.getElementById('voiceToggle').addEventListener('click', (e) => {
+  voiceOn = !voiceOn;
+  const btn = e.currentTarget;
+  btn.classList.toggle('active', voiceOn);
+  btn.setAttribute('aria-pressed', voiceOn);
+  document.getElementById('voiceLabel').textContent = voiceOn ? TRANSLATIONS[currentLang].voiceOn : TRANSLATIONS[currentLang].voice;
+});
+
+document.getElementById('guidanceSpeakBtn').addEventListener('click', () => {
+  speak(document.getElementById('guidanceText').textContent);
+});
+
+// ============ LANGUAGE ============
+document.getElementById('language').addEventListener('change', (e) => {
+  currentLang = e.target.value;
+  const t = TRANSLATIONS[currentLang];
+  document.getElementById('voiceLabel').textContent = voiceOn ? t.voiceOn : t.voice;
+  document.getElementById('checkBtn').textContent = t.check;
+  document.getElementById('locateBtn').textContent = t.locate;
+  document.getElementById('lookupHeading').textContent = t.lookupHeading;
+});
+
+// ============ ADDRESS LOOKUP ============
+document.getElementById('checkBtn').addEventListener('click', async () => {
+  const addr = document.getElementById('addressInput').value;
+  if (!addr.trim()) return;
+  const loc = await geocodeAddress(addr);
+  updateUserLocation(loc.lat, loc.lng, loc.address);
+});
+
+document.getElementById('addressInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('checkBtn').click();
+});
+
+document.getElementById('locateBtn').addEventListener('click', () => {
+  if (!navigator.geolocation) { alert('Geolocation not supported in this browser.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => updateUserLocation(pos.coords.latitude, pos.coords.longitude, 'Your current location'),
+    () => alert('Could not access location. Try entering an address instead.')
+  );
+});
+
+// Test address quick links
+document.querySelectorAll('.test-link').forEach(link => {
+  link.addEventListener('click', () => {
+    const key = link.dataset.test;
+    const loc = TEST_LOCATIONS[key];
+    document.getElementById('addressInput').value = loc.address;
+    updateUserLocation(loc.lat, loc.lng, loc.address);
+  });
+});
+
+// ============ TABS ============
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
+    document.querySelectorAll('.tab-content').forEach(c => c.hidden = true);
+    tab.classList.add('active');
+    tab.setAttribute('aria-selected', 'true');
+    document.getElementById('tab-' + tab.dataset.tab).hidden = false;
+  });
+});
+
+// ============ CHECKLIST (mock data) ============
+const MOCK_CHECKLIST = [
+  { task: "Grab medications for everyone", why: "You may not be able to return for days", time: "1 min" },
+  { task: "Get pet carrier, leash, food", why: "Shelters require pets to be contained", time: "2 min" },
+  { task: "Wallet, ID, phone + charger", why: "Needed for shelter check-in and communication", time: "30 sec" },
+  { task: "Damp cloth for nose and mouth", why: "MMA fumes irritate lungs — cover your face if you smell it", time: "30 sec" },
+  { task: "Close windows, turn off HVAC", why: "Prevents outdoor air from being pulled in if smell spreads", time: "1 min" },
+  { task: "Important documents in waterproof bag", why: "In case you can't return home", time: "2 min" },
+  { task: "Water bottles + snacks", why: "Shelters may be crowded with limited supplies", time: "2 min" },
+  { task: "Drive northeast away from plume", why: "Wind is blowing chemical vapor toward the northeast", time: "Now" }
+];
+
+function renderChecklist() {
+  const container = document.getElementById('checklistItems');
+  container.innerHTML = '';
+  MOCK_CHECKLIST.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.className = 'checklist-item';
+    div.innerHTML = `
+      <input type="checkbox" id="check-${i}" aria-labelledby="task-${i}" />
+      <div>
+        <div class="task" id="task-${i}">${item.task}</div>
+        <div class="why">${item.why}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        <span class="time-est">${item.time}</span>
+        <button class="speak-btn" onclick="speak('${item.task.replace(/'/g, "\\'")}. ${item.why.replace(/'/g, "\\'")}')" aria-label="Read aloud">🔊</button>
+      </div>
+    `;
+    div.querySelector('input').addEventListener('change', (e) => {
+      div.classList.toggle('checked', e.target.checked);
+      const total = MOCK_CHECKLIST.length;
+      const done = document.querySelectorAll('.checklist-item.checked').length;
+      document.getElementById('progressBar').style.width = (done / total * 100) + '%';
+    });
+    container.appendChild(div);
+  });
+}
+renderChecklist();
+
+// ============ CHATBOT (mock) ============
+const MOCK_RESPONSES = {
+  "is my street in the zone": "Enter your full address in the top input and I'll check it against the live evacuation zones. If you're in the red zone, leave immediately. In the yellow zone, shelter in place.",
+  "what does mma smell like": "MMA — methyl methacrylate — has a strong sweet or fruity smell, similar to nail polish remover but more intense. If you smell it, cover your nose and mouth with a damp cloth and leave the area immediately.",
+  "where can i take my dog": "The closest pet-friendly shelters are Magnolia High School and Stanton Recreation Center. Both accept dogs and cats. Bring your pet's carrier, leash, food, and any medications.",
+  "default": "I'd suggest entering your address above so I can give you specific guidance. You can also call the OCFA non-emergency line for the latest updates."
+};
+
+function addChatMsg(text, who) {
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + who;
+  div.innerHTML = `${text} ${who === 'bot' ? '<button class="speak-btn" onclick="speak(this.parentNode.firstChild.textContent.trim())">🔊</button>' : ''}`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  if (who === 'bot' && voiceOn) speak(text);
+}
+
+function handleChatSend(q) {
+  if (!q.trim()) return;
+  addChatMsg(q, 'user');
+  setTimeout(() => {
+    const key = q.toLowerCase().trim().replace(/[?.,!]/g, '');
+    let response = MOCK_RESPONSES.default;
+    for (const k in MOCK_RESPONSES) {
+      if (key.includes(k)) { response = MOCK_RESPONSES[k]; break; }
+    }
+    addChatMsg(response, 'bot');
+  }, 600);
+}
+
+document.getElementById('chatSendBtn').addEventListener('click', () => {
+  const input = document.getElementById('chatInput');
+  handleChatSend(input.value);
+  input.value = '';
+});
+document.getElementById('chatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('chatSendBtn').click();
+});
+document.querySelectorAll('.starter-q').forEach(btn => {
+  btn.addEventListener('click', () => handleChatSend(btn.dataset.q));
+});
+</script>
+</body>
+</html>
