@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Volume2, CheckCircle2, Circle } from 'lucide-react';
 import { useI18n } from '../lib/i18n.jsx';
 import { generateChecklist } from '../lib/gemini.js';
@@ -6,17 +6,33 @@ import { speak } from '../lib/tts.js';
 
 export default function Checklist() {
   const { t, lang } = useI18n();
-  const [household, setHousehold] = useState({
-    pets: 'none',
-    children: 'none',
-    elderly: 'no',
-    medications: 'no',
-    time: '30_minutes',
+  const [household, setHousehold] = useState(() => {
+    try {
+      const stored = localStorage.getItem('hazalert_household');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (err) {
+      console.warn('[checklist] failed to parse stored household:', err);
+    }
+    return {
+      pets: 'none',
+      children: 'none',
+      elderly: 'no',
+      medications: 'no',
+      time: '30_minutes',
+    };
   });
   const [items, setItems] = useState([]);
   const [checked, setChecked] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('hazalert_household', JSON.stringify(household));
+    }
+  }, [household]);
 
   const onGenerate = async () => {
     setLoading(true);

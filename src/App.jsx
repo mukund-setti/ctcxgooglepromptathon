@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { I18nProvider, useI18n } from './lib/i18n.jsx';
 import Header from './components/Header.jsx';
 import AddressBar from './components/AddressBar.jsx';
@@ -29,6 +29,23 @@ function AppInner() {
     () => (userPoint ? classifyPoint(userPoint, mockData.zones) : { level: 'none', zone: null }),
     [userPoint],
   );
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(
+        'hazalert_user_state',
+        JSON.stringify({
+          address: userPoint?.formattedAddress || '',
+          lat: userPoint?.lat || null,
+          lng: userPoint?.lng || null,
+          level: classification?.level || 'none',
+          routeSummary: route?.summary || '',
+          routeDistance: route?.distance || '',
+          routeDuration: route?.duration || '',
+        })
+      );
+    }
+  }, [userPoint, classification, route]);
 
   async function handleResolved(point) {
     setUserPoint(point);
