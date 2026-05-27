@@ -83,10 +83,15 @@ function AppInner() {
   }, [selectedIncident?.id]);
 
   const generateChecklistItems = async (currentHousehold = household) => {
+    // Prevent React SyntheticEvent or native event objects from overriding standard household state
+    const targetHousehold = (currentHousehold && (currentHousehold.target || currentHousehold.nativeEvent)) 
+      ? household 
+      : currentHousehold;
+
     setLoadingChecklist(true);
     setChecklistError(null);
     try {
-      const result = await generateChecklist(currentHousehold, selectedIncident);
+      const result = await generateChecklist(targetHousehold, selectedIncident);
       setChecklistItems(result);
       setChecklistChecked({});
     } catch (err) {

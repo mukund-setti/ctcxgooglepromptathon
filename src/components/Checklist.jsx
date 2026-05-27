@@ -98,7 +98,7 @@ export default function Checklist({
 
       <button
         type="button"
-        onClick={onGenerate}
+        onClick={() => onGenerate()}
         disabled={loading}
         className="w-full px-4 py-3 rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white font-semibold min-h-[44px]"
       >
