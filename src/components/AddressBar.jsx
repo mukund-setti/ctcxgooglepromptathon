@@ -4,12 +4,19 @@ import { useI18n } from '../lib/i18n.jsx';
 import { loadGoogleMaps } from '../lib/mapsLoader.js';
 import { geocode, reverseGeocode } from '../lib/geocode.js';
 
-export default function AddressBar({ onResolved }) {
+export default function AddressBar({ onResolved, currentAddress, highlighted }) {
   const { t } = useI18n();
   const inputRef = useRef(null);
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Sync value with external changes to currentAddress (e.g. from Voice Assistant)
+  useEffect(() => {
+    if (currentAddress !== undefined) {
+      setValue(currentAddress || '');
+    }
+  }, [currentAddress]);
 
   // Wire Places Autocomplete to the input once Maps is loaded.
   useEffect(() => {
@@ -104,7 +111,11 @@ export default function AddressBar({ onResolved }) {
             onChange={(e) => setValue(e.target.value)}
             placeholder={t.addressPlaceholder}
             aria-label={t.addressPlaceholder}
-            className="w-full pl-10 pr-3 py-3 rounded-lg bg-slate-800 border border-slate-700 text-base focus-visible:ring-2 focus-visible:ring-sky-400 min-h-[48px]"
+            className={`w-full pl-10 pr-3 py-3 rounded-lg bg-slate-800 border text-base focus-visible:ring-2 focus-visible:ring-sky-400 min-h-[48px] transition-all duration-500 ${
+              highlighted
+                ? 'border-sky-400 ring-2 ring-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.55)]'
+                : 'border-slate-700'
+            }`}
           />
         </div>
         <button

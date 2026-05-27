@@ -12,6 +12,7 @@ import LanguagePicker from './components/LanguagePicker.jsx';
 import VoiceAssistant from './components/VoiceAssistant.jsx';
 import { classifyPoint, nearestSafeShelter, haversine } from './lib/zones.js';
 import { getRoute } from './lib/directions.js';
+import { generateChecklist } from './lib/gemini.js';
 
 // Dynamic shelters database for different locations
 const SHELTERS_BY_INCIDENT = {
@@ -47,6 +48,118 @@ function AppInner() {
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [currentSnapshot, setCurrentSnapshot] = useState(null);
   const [loadingIncidents, setLoadingIncidents] = useState(true);
+
+  // Lifted household and highlight/toast states
+  const [household, setHousehold] = useState(() => {
+    try {
+      const stored = localStorage.getItem('hazalert_household');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (err) {
+      console.warn('[App] failed to parse stored household:', err);
+    }
+    return {
+      pets: 'none',
+      children: 'none',
+      elderly: 'no',
+      medications: 'no',
+      time: '30_minutes',
+    };
+  });
+  const [highlightedFields, setHighlightedFields] = useState({});
+  const [toastMessage, setToastMessage] = useState(null);
+
+  // Lifted checklist states to persist across tab switches
+  const [checklistItems, setChecklistItems] = useState([]);
+  const [checklistChecked, setChecklistChecked] = useState({});
+  const [loadingChecklist, setLoadingChecklist] = useState(false);
+  const [checklistError, setChecklistError] = useState(null);
+
+  // Clear checklist items when changing incidents
+  useEffect(() => {
+    setChecklistItems([]);
+    setChecklistChecked({});
+  }, [selectedIncident?.id]);
+
+  const generateChecklistItems = async (currentHousehold = household) => {
+    setLoadingChecklist(true);
+    setChecklistError(null);
+    try {
+      const result = await generateChecklist(currentHousehold, selectedIncident);
+      setChecklistItems(result);
+      setChecklistChecked({});
+    } catch (err) {
+      console.error('[App] checklist generation failed:', err);
+      setChecklistError(err.message);
+    } finally {
+      setLoadingChecklist(false);
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('hazalert_household', JSON.stringify(household));
+    }
+  }, [household]);
+
+  const handleExtractedDetails = async ({ householdUpdates, addressPoint, triggerChecklist }) => {
+    const fieldsUpdated = [];
+    const newHighlights = {};
+
+    // 1. Process addressPoint if provided
+    if (addressPoint) {
+      handleResolved(addressPoint);
+      newHighlights.address = true;
+      fieldsUpdated.push('Address');
+    }
+
+    // 2. Process household updates
+    let updatedHousehold = { ...household };
+    if (householdUpdates && Object.keys(householdUpdates).length > 0) {
+      updatedHousehold = { ...household, ...householdUpdates };
+      setHousehold(updatedHousehold);
+      Object.keys(householdUpdates).forEach((key) => {
+        newHighlights[key] = true;
+        const labelMap = {
+          pets: 'Pets',
+          children: 'Children',
+          elderly: 'Elderly',
+          medications: 'Medications',
+          time: 'Evacuation Time',
+        };
+        fieldsUpdated.push(labelMap[key] || key);
+      });
+    }
+
+    // 3. Trigger highlights, Toast, and auto-checklist generation
+    if (fieldsUpdated.length > 0 || triggerChecklist) {
+      if (fieldsUpdated.length > 0) {
+        setHighlightedFields(newHighlights);
+        setToastMessage(`✨ Voice assistant populated ${fieldsUpdated.length} field${fieldsUpdated.length > 1 ? 's' : ''}: ${fieldsUpdated.join(', ')}`);
+      }
+
+      if (triggerChecklist) {
+        setTab('checklist');
+        generateChecklistItems(updatedHousehold);
+      } else {
+        // Just switch to checklist tab if household fields were updated by voice
+        const hasHouseholdField = Object.keys(householdUpdates).some(k => ['pets', 'children', 'elderly', 'medications', 'time'].includes(k));
+        if (hasHouseholdField) {
+          setTab('checklist');
+        }
+      }
+
+      // Clear highlights and toast
+      setTimeout(() => {
+        setHighlightedFields({});
+      }, 3500);
+
+      setTimeout(() => {
+        setToastMessage(null);
+      }, 5000);
+    }
+  };
 
   const incidentsRef = useRef([]);
   const selectedIncidentRef = useRef(null);
@@ -383,6 +496,12 @@ function AppInner() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
+      {toastMessage && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border-2 border-sky-500 text-sky-200 px-5 py-3 rounded-xl shadow-[0_0_20px_rgba(56,189,248,0.3)] flex items-center gap-3 animate-bounce font-medium text-sm max-w-md text-center">
+          <span className="w-2.5 h-2.5 bg-sky-400 rounded-full animate-ping shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
       <Header
         voiceOn={!assistantMuted}
         onToggleVoice={() => setAssistantMuted((m) => !m)}
@@ -398,7 +517,11 @@ function AppInner() {
             <h1 className="font-mono text-lg text-slate-300 mb-3">
               Am I safe, and what do I do?
             </h1>
-            <AddressBar onResolved={handleResolved} />
+            <AddressBar
+              onResolved={handleResolved}
+              currentAddress={userPoint?.formattedAddress || ''}
+              highlighted={highlightedFields.address}
+            />
           </div>
           <StatusCard
             level={classification.level === 'none' ? null : classification.level}
@@ -446,7 +569,21 @@ function AppInner() {
             </div>
             <div className="flex-1 p-4 overflow-y-auto">
               {tab === 'guidance' && <GuidancePanel level={classification.level} zones={activeZones} />}
-              {tab === 'checklist' && <Checklist incident={selectedIncident} />}
+              {tab === 'checklist' && (
+                <Checklist
+                  incident={selectedIncident}
+                  household={household}
+                  setHousehold={setHousehold}
+                  highlightedFields={highlightedFields}
+                  items={checklistItems}
+                  setItems={setChecklistItems}
+                  checked={checklistChecked}
+                  setChecked={setChecklistChecked}
+                  loading={loadingChecklist}
+                  error={checklistError}
+                  onGenerate={generateChecklistItems}
+                />
+              )}
               {tab === 'shelters' && (
                 <SheltersList
                   userPoint={userPoint}
@@ -479,6 +616,7 @@ function AppInner() {
         onToggleMute={() => setAssistantMuted((m) => !m)}
         incident={selectedIncident}
         shelters={activeShelters}
+        onExtractDetails={handleExtractedDetails}
       />
     </div>
   );

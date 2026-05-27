@@ -185,3 +185,47 @@ export async function generateChecklist(household, incident) {
     return [];
   }
 }
+
+// ---------- Detail Extraction ----------
+
+const EXTRACTION_SYSTEM_PROMPT = `
+You are an expert information extraction assistant. Your job is to extract emergency preparedness parameters and location information from a resident's statement.
+Analyze the user statement and extract any relevant details into a JSON object matching the following schema. Only return valid JSON (no markdown block, no conversational text).
+
+Schema:
+{
+  "address": string | null, // Any address, street name, city, landmark, or coordinates mentioned, or null. Examples: "2450 W Ball Rd, Anaheim", "Stanton", "123 main street"
+  "pets": "dogs" | "cats" | "other" | "none" | null, // "dogs" if dogs/puppies are mentioned, "cats" if cats/felines are mentioned, "other" if other pets (birds, reptiles, pocket pets) are mentioned, "none" if they explicitly say they don't have pets, otherwise null.
+  "children": "infant" | "toddler" | "school_age" | "teen" | "none" | null, // "infant" if baby/infant/newborn/new baby is mentioned, "toddler" if toddler/preschooler/little kids is mentioned, "school_age" if school-age kids/children are mentioned, "teen" if teenager/teen is mentioned, "none" if explicitly none, otherwise null.
+  "elderly": "yes" | "no" | null, // "yes" if elderly members, grandparents, parents, senior citizens, old age, or mobility assistance/needs/wheelchair are mentioned, "no" if explicitly no, otherwise null.
+  "medications": "yes" | "no" | null, // "yes" if daily medications, prescriptions, pills, pharmacy, insulin, essential drugs, medical supplies are mentioned, "no" if explicitly no, otherwise null.
+  "time": "10_minutes" | "30_minutes" | "shelter_in_place" | null, // "10_minutes" if they mention needing to leave extremely quickly (e.g. 5-15 mins), "30_minutes" if they mention having a bit of time (e.g. 20-40 mins, 1 hour) to prepare, "shelter_in_place" if they mention staying indoors, sealing windows, turning off HVAC, or sheltering in place, otherwise null.
+  "triggerChecklist": boolean // true if they explicitly ask to generate a checklist, see a checklist, or ask "what should I do?", "give me checklist", "what should I pack?", "what do I pack?", etc., otherwise false.
+}
+`.trim();
+
+export async function extractDetailsFromText(text) {
+  try {
+    console.log('[Gemini Extraction] Starting extraction for text:', text);
+    const raw = await callGemini({
+      systemInstruction: EXTRACTION_SYSTEM_PROMPT,
+      contents: [{ role: 'user', parts: [{ text }] }],
+      responseMimeType: 'application/json',
+    });
+    console.log('[Gemini Extraction] Raw response:', raw);
+    
+    // Robust parsing to handle potential markdown code blocks
+    let cleanRaw = raw.trim();
+    if (cleanRaw.startsWith('```')) {
+      cleanRaw = cleanRaw.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+    }
+    
+    const parsed = JSON.parse(cleanRaw);
+    console.log('[Gemini Extraction] Parsed response:', parsed);
+    return parsed;
+  } catch (err) {
+    console.error('[Gemini Extraction] Extraction failed:', err);
+    return null;
+  }
+}
+

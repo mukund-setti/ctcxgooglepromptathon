@@ -14,8 +14,9 @@ import {
 } from 'lucide-react';
 import { useI18n } from '../lib/i18n.jsx';
 import { speak, cancel, subscribeSpeaking } from '../lib/tts.js';
-import { chatbotReply } from '../lib/gemini.js';
+import { chatbotReply, extractDetailsFromText } from '../lib/gemini.js';
 import { CloudRecorder, isCloudSttAvailable } from '../lib/stt.js';
+import { geocode } from '../lib/geocode.js';
 
 // BCP-47 codes for browser SpeechRecognition. Mirrors VOICE_MAP in tts.js.
 const RECOGNITION_LANG = {
@@ -64,7 +65,7 @@ function buildScript({ t, level, address, hasLocation, route }) {
   return parts.filter(Boolean).join(' ');
 }
 
-export default function VoiceAssistant({ level, address, hasLocation, route, muted, onToggleMute, incident, shelters }) {
+export default function VoiceAssistant({ level, address, hasLocation, route, muted, onToggleMute, incident, shelters, onExtractDetails }) {
   const { t, lang } = useI18n();
   const [speaking, setSpeaking] = useState(false);
   const [listening, setListening] = useState(false);
@@ -179,15 +180,58 @@ export default function VoiceAssistant({ level, address, hasLocation, route, mut
     setInput('');
     setThinking(true);
     try {
-      const out = await chatbotReply({
+      const chatbotPromise = chatbotReply({
         history,
         userMessage: trimmed,
         incident,
         shelters,
         lang,
       });
+
+      const extractionPromise = extractDetailsFromText(trimmed);
+
+      const [out, extracted] = await Promise.all([chatbotPromise, extractionPromise]);
+
       setMessages([...next, { role: 'bot', text: out }]);
       if (!muted) speak(out, lang);
+
+      // Process extracted details in background
+      if (extracted) {
+        console.log('[VoiceAssistant] Extracted details:', extracted);
+        let addressPoint = null;
+        let householdUpdates = {};
+
+        // 1. Geocode address if extracted
+        if (extracted.address) {
+          console.log('[VoiceAssistant] Attempting to geocode extracted address:', extracted.address);
+          try {
+            const geocoded = await geocode(extracted.address);
+            console.log('[VoiceAssistant] Geocoded result:', geocoded);
+            if (geocoded) {
+              addressPoint = geocoded;
+            }
+          } catch (err) {
+            console.error('[VoiceAssistant] Geocoding extracted address failed:', err);
+          }
+        }
+
+        // 2. Extract household params
+        const fields = ['pets', 'children', 'elderly', 'medications', 'time'];
+        fields.forEach((field) => {
+          if (extracted[field] !== undefined && extracted[field] !== null) {
+            householdUpdates[field] = extracted[field];
+          }
+        });
+
+        // 3. Callback parent
+        if (onExtractDetails && (addressPoint || Object.keys(householdUpdates).length > 0 || extracted.triggerChecklist)) {
+          onExtractDetails({
+            householdUpdates,
+            addressPoint,
+            triggerChecklist: extracted.triggerChecklist || false,
+          });
+        }
+      }
     } catch (err) {
       console.warn('[assistant] reply failed:', err.message);
       setError(t.chatError);

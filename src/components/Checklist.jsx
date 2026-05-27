@@ -4,56 +4,20 @@ import { useI18n } from '../lib/i18n.jsx';
 import { generateChecklist } from '../lib/gemini.js';
 import { speak } from '../lib/tts.js';
 
-export default function Checklist({ incident }) {
+export default function Checklist({
+  incident,
+  household,
+  setHousehold,
+  highlightedFields = {},
+  items = [],
+  setItems,
+  checked = {},
+  setChecked,
+  loading = false,
+  error = null,
+  onGenerate,
+}) {
   const { t, lang } = useI18n();
-  const [household, setHousehold] = useState(() => {
-    try {
-      const stored = localStorage.getItem('hazalert_household');
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (err) {
-      console.warn('[checklist] failed to parse stored household:', err);
-    }
-    return {
-      pets: 'none',
-      children: 'none',
-      elderly: 'no',
-      medications: 'no',
-      time: '30_minutes',
-    };
-  });
-  const [items, setItems] = useState([]);
-  const [checked, setChecked] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  // Clear checklist items when changing hazards
-  useEffect(() => {
-    setItems([]);
-    setChecked({});
-  }, [incident?.id]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('hazalert_household', JSON.stringify(household));
-    }
-  }, [household]);
-
-  const onGenerate = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await generateChecklist(household, incident);
-      setItems(result);
-      setChecked({});
-    } catch (err) {
-      console.error(err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const progress = items.length ? (Object.values(checked).filter(Boolean).length / items.length) * 100 : 0;
 
@@ -66,7 +30,9 @@ export default function Checklist({ incident }) {
       <div className="grid grid-cols-2 gap-3">
         <Field label={t.pets}>
           <select
-            className="select"
+            className={`select transition-all duration-500 ${
+              highlightedFields.pets ? 'border-sky-400 ring-2 ring-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.5)]' : ''
+            }`}
             value={household.pets}
             onChange={(e) => setHousehold({ ...household, pets: e.target.value })}
           >
@@ -78,7 +44,9 @@ export default function Checklist({ incident }) {
         </Field>
         <Field label={t.children}>
           <select
-            className="select"
+            className={`select transition-all duration-500 ${
+              highlightedFields.children ? 'border-sky-400 ring-2 ring-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.5)]' : ''
+            }`}
             value={household.children}
             onChange={(e) => setHousehold({ ...household, children: e.target.value })}
           >
@@ -91,7 +59,9 @@ export default function Checklist({ incident }) {
         </Field>
         <Field label={t.elderly}>
           <select
-            className="select"
+            className={`select transition-all duration-500 ${
+              highlightedFields.elderly ? 'border-sky-400 ring-2 ring-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.5)]' : ''
+            }`}
             value={household.elderly}
             onChange={(e) => setHousehold({ ...household, elderly: e.target.value })}
           >
@@ -101,7 +71,9 @@ export default function Checklist({ incident }) {
         </Field>
         <Field label={t.medications}>
           <select
-            className="select"
+            className={`select transition-all duration-500 ${
+              highlightedFields.medications ? 'border-sky-400 ring-2 ring-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.5)]' : ''
+            }`}
             value={household.medications}
             onChange={(e) => setHousehold({ ...household, medications: e.target.value })}
           >
@@ -111,7 +83,9 @@ export default function Checklist({ incident }) {
         </Field>
         <Field label={t.timeAvailable} className="col-span-2">
           <select
-            className="select"
+            className={`select transition-all duration-500 ${
+              highlightedFields.time ? 'border-sky-400 ring-2 ring-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.5)]' : ''
+            }`}
             value={household.time}
             onChange={(e) => setHousehold({ ...household, time: e.target.value })}
           >
