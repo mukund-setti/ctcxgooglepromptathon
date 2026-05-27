@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { I18nProvider, useI18n } from './lib/i18n.jsx';
 import Header from './components/Header.jsx';
 import AddressBar from './components/AddressBar.jsx';
@@ -47,6 +47,17 @@ function AppInner() {
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [currentSnapshot, setCurrentSnapshot] = useState(null);
   const [loadingIncidents, setLoadingIncidents] = useState(true);
+
+  const incidentsRef = useRef([]);
+  const selectedIncidentRef = useRef(null);
+
+  useEffect(() => {
+    incidentsRef.current = incidents;
+  }, [incidents]);
+
+  useEffect(() => {
+    selectedIncidentRef.current = selectedIncident;
+  }, [selectedIncident]);
 
   // Fetch active incidents on mount
   useEffect(() => {
@@ -313,8 +324,9 @@ function AppInner() {
       console.warn('[App] Auto-detection of closest incident failed, calculating locally:', err.message);
     }
 
-    if (!nearestInc && incidents.length > 0) {
-      const nearest = incidents
+    const currentIncidents = incidentsRef.current;
+    if (!nearestInc && currentIncidents.length > 0) {
+      const nearest = currentIncidents
         .map((i) => ({ incident: i, dist: haversine(point, i.centroid) }))
         .sort((a, b) => a.dist - b.dist)[0];
       if (nearest) {
@@ -323,8 +335,8 @@ function AppInner() {
     }
 
     if (nearestInc) {
-      const matched = incidents.find((i) => i.id === nearestInc.id) || nearestInc;
-      if (selectedIncident?.id !== matched.id) {
+      const matched = currentIncidents.find((i) => i.id === nearestInc.id) || nearestInc;
+      if (selectedIncidentRef.current?.id !== matched.id) {
         await handleSelectIncident(matched, true); // Keep user point!
       }
     }
