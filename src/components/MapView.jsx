@@ -173,7 +173,7 @@ export default function MapView({ userPoint, level, route, incident, zones, shel
 
     mapRef.current.panTo(position);
     if (mapRef.current.getZoom() < 13) mapRef.current.setZoom(14);
-  }, [userPoint, ready, t.yourLocation]);
+  }, [userPoint, ready, t.yourLocation, incident?.id]);
 
   // 3. Draw route polyline when provided.
   useEffect(() => {

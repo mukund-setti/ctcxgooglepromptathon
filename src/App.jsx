@@ -118,9 +118,11 @@ function AppInner() {
   }, []);
 
   // Fetch full incident details & zones snapshot
-  async function handleSelectIncident(incident) {
+  async function handleSelectIncident(incident, keepUserPoint = false) {
     setSelectedIncident(incident);
-    setUserPoint(null);
+    if (!keepUserPoint) {
+      setUserPoint(null);
+    }
     setRoute(null);
     setRouteError(null);
 
@@ -271,10 +273,32 @@ function AppInner() {
     }
   }, [userPoint, classification, route]);
 
+  // Auto-route when location or active incident zones/shelters change
+  useEffect(() => {
+    if (!userPoint) {
+      setRoute(null);
+      setRouteError(null);
+      return;
+    }
+    const { level } = classifyPoint(userPoint, activeZones);
+    if (level === 'mandatory' || level === 'shelter_in_place') {
+      const shelter = nearestSafeShelter(userPoint, activeShelters, activeZones);
+      if (shelter) {
+        computeRoute(userPoint, shelter);
+      } else {
+        setRoute(null);
+      }
+    } else {
+      setRoute(null);
+    }
+  }, [userPoint, activeZones, activeShelters]);
+
   async function handleResolved(point) {
     setUserPoint(point);
     setRoute(null);
     setRouteError(null);
+
+    let nearestInc = null;
 
     // Dynamic Geolocation-Aware auto-detection of closest active incident
     try {
@@ -282,33 +306,26 @@ function AppInner() {
       if (res.ok) {
         const data = await res.json();
         if (data.nearest && data.nearest.incident) {
-          const nearestInc = data.nearest.incident;
-          if (selectedIncident?.id !== nearestInc.id) {
-            const matched = incidents.find((i) => i.id === nearestInc.id) || nearestInc;
-            await handleSelectIncident(matched);
-            return; // Exit and let new details compute route
-          }
+          nearestInc = data.nearest.incident;
         }
       }
     } catch (err) {
       console.warn('[App] Auto-detection of closest incident failed, calculating locally:', err.message);
-      if (incidents.length > 0) {
-        const nearest = incidents
-          .map((i) => ({ incident: i, dist: haversine(point, i.centroid) }))
-          .sort((a, b) => a.dist - b.dist)[0];
-        if (nearest && selectedIncident?.id !== nearest.incident.id) {
-          await handleSelectIncident(nearest.incident);
-          return;
-        }
+    }
+
+    if (!nearestInc && incidents.length > 0) {
+      const nearest = incidents
+        .map((i) => ({ incident: i, dist: haversine(point, i.centroid) }))
+        .sort((a, b) => a.dist - b.dist)[0];
+      if (nearest) {
+        nearestInc = nearest.incident;
       }
     }
 
-    // Auto-route on current active incident zones
-    const { level } = classifyPoint(point, activeZones);
-    if (level === 'mandatory' || level === 'shelter_in_place') {
-      const shelter = nearestSafeShelter(point, activeShelters, activeZones);
-      if (shelter) {
-        await computeRoute(point, shelter);
+    if (nearestInc) {
+      const matched = incidents.find((i) => i.id === nearestInc.id) || nearestInc;
+      if (selectedIncident?.id !== matched.id) {
+        await handleSelectIncident(matched, true); // Keep user point!
       }
     }
   }
