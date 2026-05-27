@@ -66,7 +66,7 @@ export default function IncidentSelector({ incidents, selectedIncident, onSelect
           className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-72 origin-top-right rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md shadow-2xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50 divide-y divide-slate-800/60 overflow-hidden"
         >
           <div className="px-3 py-2 text-xs font-semibold font-mono text-slate-500 uppercase tracking-wider bg-slate-950/20">
-            {t.changeLanguage || 'Active Hazards'}
+            {t.activeHazards || 'Active Hazards'}
           </div>
           {incidents.map((incident) => {
             const Icon = HAZARD_ICONS[incident.type] || AlertCircle;

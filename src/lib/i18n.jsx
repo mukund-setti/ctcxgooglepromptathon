@@ -6,6 +6,7 @@ export const BASE_STRINGS = {
   // Header
   appName: 'HazAlert',
   liveIncident: 'LIVE — Garden Grove Chemical Leak',
+  activeHazards: 'Active Hazards',
   voiceOn: 'Voice on',
   voiceOff: 'Voice off',
   language: 'Language',
