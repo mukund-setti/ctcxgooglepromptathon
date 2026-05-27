@@ -67,7 +67,7 @@ export const BASE_STRINGS = {
   statusWatchAction: 'Pack a go-bag. Monitor official updates.',
   statusSafe: 'YOU ARE OUTSIDE THE DANGER ZONE',
   statusSafeAction: 'Stay alert. Conditions can change quickly.',
-  noAddress: 'Enter an address above to check your status.',
+  noAddress: 'Enter an address to check your status.',
   // Tabs
   tabGuidance: 'Guidance',
   tabChecklist: 'Checklist',
