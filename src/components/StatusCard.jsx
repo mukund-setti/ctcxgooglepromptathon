@@ -1,7 +1,6 @@
 import { AlertOctagon, Home, Eye, ShieldCheck, Volume2 } from 'lucide-react';
 import { useI18n } from '../lib/i18n.jsx';
 import { speak } from '../lib/tts.js';
-import { useEffect, useRef } from 'react';
 
 const STYLES = {
   mandatory: {
@@ -28,12 +27,11 @@ const STYLES = {
   },
 };
 
-export default function StatusCard({ level, address, voiceOn }) {
+export default function StatusCard({ level, address }) {
   const { t, lang } = useI18n();
   const key = level || 'none';
   const style = STYLES[key];
   const { Icon } = style;
-  const prevLevel = useRef(null);
 
   const titleMap = {
     mandatory: t.statusMandatory,
@@ -52,14 +50,6 @@ export default function StatusCard({ level, address, voiceOn }) {
 
   const title = titleMap[key];
   const action = actionMap[key];
-
-  // Auto-announce status changes when voice is on.
-  useEffect(() => {
-    if (!voiceOn) return;
-    if (!level || level === prevLevel.current) return;
-    prevLevel.current = level;
-    speak(`${title}. ${action}`, lang);
-  }, [level, voiceOn, title, action, lang]);
 
   return (
     <div

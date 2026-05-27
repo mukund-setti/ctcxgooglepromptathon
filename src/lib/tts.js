@@ -14,6 +14,24 @@ const VOICE_MAP = {
 };
 
 let currentAudio = null;
+const listeners = new Set();
+let speaking = false;
+
+function setSpeaking(next) {
+  if (speaking === next) return;
+  speaking = next;
+  listeners.forEach((fn) => fn(speaking));
+}
+
+export function isSpeaking() {
+  return speaking;
+}
+
+export function subscribeSpeaking(fn) {
+  listeners.add(fn);
+  fn(speaking);
+  return () => listeners.delete(fn);
+}
 
 export async function speak(text, lang = 'en') {
   cancel();
@@ -27,13 +45,13 @@ export async function speak(text, lang = 'en') {
       console.warn('[tts] Cloud TTS failed, falling back to Web Speech:', err.message);
     }
   }
-  speakBrowser(text, lang);
+  await speakBrowser(text, lang);
 }
 
-async function speakCloud(text, lang) {
+function speakCloud(text, lang) {
   const voice = VOICE_MAP[lang] || VOICE_MAP.en;
   const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${KEY}`;
-  const res = await fetch(url, {
+  return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -41,22 +59,61 @@ async function speakCloud(text, lang) {
       voice,
       audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 },
     }),
-  });
-  if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
-  const data = await res.json();
-  if (!data.audioContent) throw new Error('TTS returned no audio');
-
-  const audio = new Audio(`data:audio/mp3;base64,${data.audioContent}`);
-  currentAudio = audio;
-  await audio.play();
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
+      return res.json();
+    })
+    .then(
+      (data) =>
+        new Promise((resolve, reject) => {
+          if (!data.audioContent) {
+            reject(new Error('TTS returned no audio'));
+            return;
+          }
+          const audio = new Audio(`data:audio/mp3;base64,${data.audioContent}`);
+          currentAudio = audio;
+          setSpeaking(true);
+          const cleanup = () => {
+            if (currentAudio === audio) currentAudio = null;
+            setSpeaking(false);
+          };
+          audio.addEventListener('ended', () => {
+            cleanup();
+            resolve();
+          });
+          audio.addEventListener('error', () => {
+            cleanup();
+            reject(new Error('Audio playback failed'));
+          });
+          audio.play().catch((err) => {
+            cleanup();
+            reject(err);
+          });
+        }),
+    );
 }
 
 function speakBrowser(text, lang) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = (VOICE_MAP[lang] || VOICE_MAP.en).languageCode;
-  utter.rate = 1.0;
-  window.speechSynthesis.speak(utter);
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      resolve();
+      return;
+    }
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = (VOICE_MAP[lang] || VOICE_MAP.en).languageCode;
+    utter.rate = 1.0;
+    utter.onend = () => {
+      setSpeaking(false);
+      resolve();
+    };
+    utter.onerror = () => {
+      setSpeaking(false);
+      resolve();
+    };
+    setSpeaking(true);
+    window.speechSynthesis.speak(utter);
+  });
 }
 
 export function cancel() {
@@ -67,4 +124,5 @@ export function cancel() {
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     window.speechSynthesis.cancel();
   }
+  setSpeaking(false);
 }

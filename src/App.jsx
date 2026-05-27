@@ -8,13 +8,18 @@ import GuidancePanel from './components/GuidancePanel.jsx';
 import Checklist from './components/Checklist.jsx';
 import Chatbot from './components/Chatbot.jsx';
 import SheltersList from './components/SheltersList.jsx';
+import LanguagePicker from './components/LanguagePicker.jsx';
+import VoiceAssistant from './components/VoiceAssistant.jsx';
 import { classifyPoint, nearestSafeShelter } from './lib/zones.js';
 import { getRoute } from './lib/directions.js';
 import mockData from './data/mockData.json';
 
 function AppInner() {
-  const { t } = useI18n();
-  const [voiceOn, setVoiceOn] = useState(false);
+  const { t, hasSelectedLanguage } = useI18n();
+  // `assistantMuted` controls the proactive voice assistant. The Header's
+  // existing voice toggle now maps to mute/unmute — the assistant is always
+  // mounted once the user picks a language so they can ask for help anytime.
+  const [assistantMuted, setAssistantMuted] = useState(false);
   const [userPoint, setUserPoint] = useState(null);
   const [tab, setTab] = useState('guidance');
   const [route, setRoute] = useState(null);
@@ -61,11 +66,18 @@ function AppInner() {
     computeRoute(userPoint, shelter);
   }
 
+  if (!hasSelectedLanguage) {
+    return <LanguagePicker />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
-      <Header voiceOn={voiceOn} onToggleVoice={() => setVoiceOn((v) => !v)} />
+      <Header
+        voiceOn={!assistantMuted}
+        onToggleVoice={() => setAssistantMuted((m) => !m)}
+      />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6 pb-48 sm:pb-32">
         {/* Hero band */}
         <section className="grid lg:grid-cols-2 gap-4 items-stretch">
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 flex flex-col justify-center">
@@ -77,7 +89,6 @@ function AppInner() {
           <StatusCard
             level={classification.level === 'none' ? null : classification.level}
             address={userPoint?.formattedAddress}
-            voiceOn={voiceOn}
           />
         </section>
 
@@ -118,7 +129,7 @@ function AppInner() {
               {tab === 'shelters' && (
                 <SheltersList userPoint={userPoint} onRoute={onRouteToShelter} />
               )}
-              {tab === 'assistant' && <Chatbot voiceOn={voiceOn} />}
+              {tab === 'assistant' && <Chatbot voiceOn={!assistantMuted} />}
             </div>
           </div>
         </section>
@@ -127,6 +138,15 @@ function AppInner() {
           HazAlert · Built for CTC × Google Gemini Prompt-a-Thon 2026 · Demo data only
         </footer>
       </main>
+
+      <VoiceAssistant
+        level={classification.level === 'none' ? null : classification.level}
+        address={userPoint?.formattedAddress}
+        hasLocation={Boolean(userPoint)}
+        route={route}
+        muted={assistantMuted}
+        onToggleMute={() => setAssistantMuted((m) => !m)}
+      />
     </div>
   );
 }
