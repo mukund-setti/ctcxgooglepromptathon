@@ -1,6 +1,0 @@
-{
-  "name": "HazAlert",
-  "description": "A real-time hazmat evacuation dashboard for residents during chemical emergencies.",
-  "requestFramePermissions": ["geolocation"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
