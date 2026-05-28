@@ -215,10 +215,10 @@ function AppInner() {
             type: 'wildfire',
             facility: 'Box Springs Mountain Reserve',
             startedAt: '2026-05-24T13:42:00-07:00',
-            status: 'active',
+            status: 'contained',
             centroid: { lat: 33.9612, lng: -117.3045 },
             currentSnapshotId: 'snap_riverside_fire_2026_05_26T0900',
-            summary: 'Brush fire on east face of Box Springs; 2,400 acres burned, 18% contained. Mandatory evacuation for east Riverside foothills.',
+            summary: 'Brush fire on east face of Box Springs; 2,400 acres burned. 100% contained as of April.',
           },
           {
             id: 'inc_sac_flood_2026_03_15',
