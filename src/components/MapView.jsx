@@ -62,8 +62,10 @@ export default function MapView({ userPoint, level, route, incident, zones, shel
     closureMarkersRef.current.forEach((c) => c.setMap(null));
     closureMarkersRef.current = [];
 
+    console.log('[MapView] Redrawing zones/shelters. userPoint:', userPoint, 'incident epicenter:', incident?.centroid);
     // Recenter and zoom to epicenter only if there's no userPoint
     if (!userPoint && incident?.centroid) {
+      console.log('[MapView] No userPoint. Panning to incident epicenter:', incident.centroid);
       map.panTo(incident.centroid);
       map.setZoom(incident.type === 'flood' ? 12 : 13);
     }
@@ -148,6 +150,7 @@ export default function MapView({ userPoint, level, route, incident, zones, shel
 
   // 2. Update user marker + recenter when userPoint changes.
   useEffect(() => {
+    console.log('[MapView] Recenter & marker effect triggered. userPoint:', userPoint, 'ready:', ready);
     if (!ready || !userPoint || !mapRef.current) return;
     const google = window.google;
     const position = { lat: userPoint.lat, lng: userPoint.lng };
@@ -171,6 +174,7 @@ export default function MapView({ userPoint, level, route, incident, zones, shel
       });
     }
 
+    console.log('[MapView] Panning map to position:', position);
     mapRef.current.panTo(position);
     if (mapRef.current.getZoom() < 13) mapRef.current.setZoom(14);
   }, [userPoint, ready, t.yourLocation, incident?.id]);
