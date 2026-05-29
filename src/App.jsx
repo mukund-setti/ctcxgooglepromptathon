@@ -6,7 +6,6 @@ import StatusCard from './components/StatusCard.jsx';
 import MapView from './components/MapView.jsx';
 import GuidancePanel from './components/GuidancePanel.jsx';
 import Checklist from './components/Checklist.jsx';
-import Chatbot from './components/Chatbot.jsx';
 import SheltersList from './components/SheltersList.jsx';
 import LanguagePicker from './components/LanguagePicker.jsx';
 import VoiceAssistant from './components/VoiceAssistant.jsx';
@@ -41,8 +40,49 @@ const SHELTERS_BY_INCIDENT = {
   ],
 };
 
-function getSheltersForIncident(incidentId) {
-  return SHELTERS_BY_INCIDENT[incidentId] || SHELTERS_BY_INCIDENT['inc_gg_mma_2026_05_21'];
+function getSheltersForIncident(incidentOrId) {
+  if (!incidentOrId) return [];
+
+  const incidentId = typeof incidentOrId === 'string' ? incidentOrId : incidentOrId.id;
+
+  if (SHELTERS_BY_INCIDENT[incidentId]) {
+    return SHELTERS_BY_INCIDENT[incidentId];
+  }
+
+  // Dynamic fallback for dynamically ingested or parsed incidents (like a flood in Florida) using its centroid!
+  if (typeof incidentOrId === 'object' && incidentOrId.centroid) {
+    const { lat, lng } = incidentOrId.centroid;
+    const name = incidentOrId.name || 'Local Alert';
+    // Extract a realistic location prefix (e.g. Florida, Riverside, etc.)
+    const area = name
+      .replace(/\b(chemical leak|wildfire|flood|levee overtopping|accident|incident|leak|fire|spill|alert|ingestion|gis|news)\b/ig, '')
+      .trim() || 'Emergency';
+
+    const nameSuffix = incidentOrId.type === 'flood' ? 'Flood Evacuation Center' : 
+                       incidentOrId.type === 'wildfire' ? 'Wildfire Relief Shelter' : 
+                       'Emergency Shelter';
+
+    return [
+      { 
+        name: `${area} Primary ${nameSuffix}`, 
+        address: `1.2 miles NE of Incident origin, ${area}`, 
+        petFriendly: true, 
+        adaAccessible: true, 
+        lat: lat + 0.015, 
+        lng: lng + 0.015 
+      },
+      { 
+        name: `${area} Secondary ${nameSuffix}`, 
+        address: `2.5 miles NW of Incident origin, ${area}`, 
+        petFriendly: false, 
+        adaAccessible: true, 
+        lat: lat + 0.025, 
+        lng: lng - 0.020 
+      }
+    ];
+  }
+
+  return SHELTERS_BY_INCIDENT['inc_gg_mma_2026_05_21'];
 }
 
 function AppInner() {
@@ -218,28 +258,6 @@ function AppInner() {
             centroid: { lat: 33.78, lng: -117.955 },
             currentSnapshotId: 'snap_gg_mma_2026_05_21T1400',
             summary: 'Industrial chemical release at GKN Aerospace; SW winds carrying plume NE toward residential Garden Grove.',
-          },
-          {
-            id: 'inc_riverside_fire_2026_05_24',
-            name: 'Box Springs Wildfire',
-            type: 'wildfire',
-            facility: 'Box Springs Mountain Reserve',
-            startedAt: '2026-05-24T13:42:00-07:00',
-            status: 'contained',
-            centroid: { lat: 33.9612, lng: -117.3045 },
-            currentSnapshotId: 'snap_riverside_fire_2026_05_26T0900',
-            summary: 'Brush fire on east face of Box Springs; 2,400 acres burned. 100% contained as of April.',
-          },
-          {
-            id: 'inc_sac_flood_2026_03_15',
-            name: 'American River Levee Overtopping',
-            type: 'flood',
-            facility: 'American River — Watt Ave bridge',
-            startedAt: '2026-03-15T04:20:00-07:00',
-            status: 'contained',
-            centroid: { lat: 38.5811, lng: -121.395 },
-            currentSnapshotId: 'snap_sac_flood_2026_03_18T1000',
-            summary: 'Levee overtopping along American River reach; waters receded as of 2026-03-18. Damage assessment ongoing.',
           }
         ];
         setIncidents(localIncidents);
@@ -375,65 +393,13 @@ function AppInner() {
             },
           ],
         },
-        inc_riverside_fire_2026_05_24: {
-          id: 'snap_riverside_fire_2026_05_26T0900',
-          incidentId: 'inc_riverside_fire_2026_05_24',
-          timestamp: '2026-05-26T09:00:00-07:00',
-          source: 'ipaws',
-          zones: [
-            {
-              level: 'mandatory',
-              color: '#DC2626',
-              label: 'Mandatory Evacuation — Zones RIV-E-12, RIV-E-13',
-              guidance: 'Leave now via westbound I-215 or 60. Do not delay. Embers may travel 1+ miles ahead of the fire front.',
-              polygon: [
-                { lat: 33.98, lng: -117.31 },
-                { lat: 33.98, lng: -117.28 },
-                { lat: 33.94, lng: -117.28 },
-                { lat: 33.94, lng: -117.31 },
-              ],
-            },
-            {
-              level: 'watch',
-              color: '#FB923C',
-              label: 'Evacuation Warning — Zone RIV-E-14',
-              guidance: 'Be prepared to leave. Move vehicles facing out. Charge phones. Confirm out-of-area contact.',
-              polygon: [
-                { lat: 34.0, lng: -117.33 },
-                { lat: 34.0, lng: -117.26 },
-                { lat: 33.92, lng: -117.26 },
-                { lat: 33.92, lng: -117.33 },
-              ],
-            },
-          ],
-        },
-        inc_sac_flood_2026_03_15: {
-          id: 'snap_sac_flood_2026_03_18T1000',
-          incidentId: 'inc_sac_flood_2026_03_15',
-          timestamp: '2026-03-18T10:00:00-07:00',
-          source: 'county_gis',
-          zones: [
-            {
-              level: 'advisory',
-              color: '#3B82F6',
-              label: 'Flood Advisory — Residual',
-              guidance: 'Waters have receded. Avoid flooded basements and report damage to Sacramento OES.',
-              polygon: [
-                { lat: 38.6, lng: -121.41 },
-                { lat: 38.6, lng: -121.37 },
-                { lat: 38.56, lng: -121.37 },
-                { lat: 38.56, lng: -121.41 },
-              ],
-            },
-          ],
-        },
       };
       setCurrentSnapshot(localSnapshots[incident.id] || null);
     }
   }
 
   const activeShelters = useMemo(
-    () => (selectedIncident ? getSheltersForIncident(selectedIncident.id) : []),
+    () => (selectedIncident ? getSheltersForIncident(selectedIncident) : []),
     [selectedIncident]
   );
 
@@ -516,8 +482,31 @@ function AppInner() {
 
     if (nearestInc) {
       const matched = currentIncidents.find((i) => i.id === nearestInc.id) || nearestInc;
-      if (selectedIncidentRef.current?.id !== matched.id) {
-        await handleSelectIncident(matched, true); // Keep user point!
+
+      // Check if the user is actually inside an active warning/evacuation zone of this closest incident
+      let isUserInDangerZone = false;
+      try {
+        const detailRes = await fetch(`${API_BASE}/api/incidents/${matched.id}`);
+        if (detailRes.ok) {
+          const detailData = await detailRes.json();
+          const snap = detailData.currentSnapshot;
+          if (snap && snap.zones) {
+            const checkClass = classifyPoint(point, snap.zones);
+            if (checkClass && checkClass.level !== 'none' && checkClass.level !== 'safe') {
+              isUserInDangerZone = true;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[App] Failed to check danger zone classification for closest incident:', err.message);
+      }
+
+      // Automatically lock onto the hazard if it directly threatens the user's location.
+      // Otherwise, the manually selected or default hazard remains active!
+      if (isUserInDangerZone) {
+        if (selectedIncidentRef.current?.id !== matched.id) {
+          await handleSelectIncident(matched, true); // Keep user point!
+        }
       }
     }
   }
@@ -575,6 +564,7 @@ function AppInner() {
         incidents={incidents}
         selectedIncident={selectedIncident}
         onSelectIncident={handleSelectIncident}
+        hasLocation={Boolean(userPoint)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6 pb-48 sm:pb-32">
@@ -630,9 +620,6 @@ function AppInner() {
               <TabBtn active={tab === 'shelters'} onClick={() => setTab('shelters')}>
                 {t.tabShelters}
               </TabBtn>
-              <TabBtn active={tab === 'assistant'} onClick={() => setTab('assistant')}>
-                {t.tabAssistant}
-              </TabBtn>
             </div>
             <div className="flex-1 p-4 overflow-y-auto">
               {tab === 'guidance' && <GuidancePanel level={classification.level} zones={activeZones} />}
@@ -655,13 +642,6 @@ function AppInner() {
                 <SheltersList
                   userPoint={userPoint}
                   onRoute={onRouteToShelter}
-                  shelters={activeShelters}
-                />
-              )}
-              {tab === 'assistant' && (
-                <Chatbot
-                  voiceOn={!assistantMuted}
-                  incident={selectedIncident}
                   shelters={activeShelters}
                 />
               )}

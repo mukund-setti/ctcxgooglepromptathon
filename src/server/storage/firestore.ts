@@ -37,28 +37,16 @@ const SEED_INCIDENTS: Incident[] = [
       'Industrial chemical release at GKN Aerospace; SW winds carrying plume NE toward residential Garden Grove.',
   },
   {
-    id: 'inc_riverside_fire_2026_05_24',
-    name: 'Box Springs Wildfire',
-    type: 'wildfire',
-    facility: 'Box Springs Mountain Reserve',
-    startedAt: '2026-05-24T13:42:00-07:00',
-    status: 'contained',
-    centroid: { lat: 33.9612, lng: -117.3045 },
-    currentSnapshotId: 'snap_riverside_fire_2026_05_26T0900',
-    summary:
-      'Brush fire on east face of Box Springs; 2,400 acres burned. 100% contained as of April.',
-  },
-  {
-    id: 'inc_sac_flood_2026_03_15',
-    name: 'American River Levee Overtopping',
+    id: 'inc_fl_flood_2026_05_28',
+    name: 'Florida Coastal Flood Warning',
     type: 'flood',
-    facility: 'American River — Watt Ave bridge',
-    startedAt: '2026-03-15T04:20:00-07:00',
-    status: 'contained',
-    centroid: { lat: 38.5811, lng: -121.395 },
-    currentSnapshotId: 'snap_sac_flood_2026_03_18T1000',
+    facility: 'Miami-Dade Coastal Protection',
+    startedAt: '2026-05-28T08:00:00-07:00',
+    status: 'active',
+    centroid: { lat: 25.7617, lng: -80.1918 },
+    currentSnapshotId: 'snap_fl_flood_2026_05_28T0800',
     summary:
-      'Levee overtopping along American River reach; waters receded as of 2026-03-18. Damage assessment ongoing.',
+      'Severe tidal flooding and heavy storm surge along Miami-Dade coastline; residents advised to seek higher ground.',
   },
 ];
 
@@ -110,57 +98,36 @@ const SEED_SNAPSHOTS: Record<string, ZoneSnapshot> = {
       },
     ],
   },
-  snap_riverside_fire_2026_05_26T0900: {
-    id: 'snap_riverside_fire_2026_05_26T0900',
-    incidentId: 'inc_riverside_fire_2026_05_24',
-    timestamp: '2026-05-26T09:00:00-07:00',
-    source: 'ipaws',
+  snap_fl_flood_2026_05_28T0800: {
+    id: 'snap_fl_flood_2026_05_28T0800',
+    incidentId: 'inc_fl_flood_2026_05_28',
+    timestamp: '2026-05-28T08:00:00-07:00',
+    source: 'county_gis',
     zones: [
       {
         level: 'mandatory',
         color: '#DC2626',
-        label: 'Mandatory Evacuation — Zones RIV-E-12, RIV-E-13',
+        label: 'Mandatory Evacuation (Flooding)',
         guidance:
-          'Leave now via westbound I-215 or 60. Do not delay. Embers may travel 1+ miles ahead of the fire front.',
+          'Move inland immediately. Do not drive through flooded waters. Stay off beaches and docks.',
         polygon: [
-          { lat: 33.98, lng: -117.31 },
-          { lat: 33.98, lng: -117.28 },
-          { lat: 33.94, lng: -117.28 },
-          { lat: 33.94, lng: -117.31 },
+          { lat: 25.80, lng: -80.13 },
+          { lat: 25.80, lng: -80.11 },
+          { lat: 25.72, lng: -80.11 },
+          { lat: 25.72, lng: -80.13 },
         ],
       },
       {
         level: 'watch',
         color: '#FB923C',
-        label: 'Evacuation Warning — Zone RIV-E-14',
+        label: 'Coastal Watch Zone',
         guidance:
-          'Be prepared to leave. Move vehicles facing out. Charge phones. Confirm out-of-area contact.',
+          'Monitor tide reports. Be prepared to seek shelter or higher ground if water levels rise.',
         polygon: [
-          { lat: 34.0, lng: -117.33 },
-          { lat: 34.0, lng: -117.26 },
-          { lat: 33.92, lng: -117.26 },
-          { lat: 33.92, lng: -117.33 },
-        ],
-      },
-    ],
-  },
-  snap_sac_flood_2026_03_18T1000: {
-    id: 'snap_sac_flood_2026_03_18T1000',
-    incidentId: 'inc_sac_flood_2026_03_15',
-    timestamp: '2026-03-18T10:00:00-07:00',
-    source: 'county_gis',
-    zones: [
-      {
-        level: 'advisory',
-        color: '#3B82F6',
-        label: 'Flood Advisory — Residual',
-        guidance:
-          'Waters have receded. Avoid flooded basements and report damage to Sacramento OES.',
-        polygon: [
-          { lat: 38.6, lng: -121.41 },
-          { lat: 38.6, lng: -121.37 },
-          { lat: 38.56, lng: -121.37 },
-          { lat: 38.56, lng: -121.41 },
+          { lat: 25.82, lng: -80.22 },
+          { lat: 25.82, lng: -80.10 },
+          { lat: 25.70, lng: -80.10 },
+          { lat: 25.70, lng: -80.22 },
         ],
       },
     ],
@@ -211,20 +178,15 @@ const SEED_EVENTS: IncidentEvent[] = [
     },
   },
   {
-    id: 'evt_rv_001',
-    incidentId: 'inc_riverside_fire_2026_05_24',
-    timestamp: '2026-05-24T13:42:00-07:00',
+    id: 'evt_fl_001',
+    incidentId: 'inc_fl_flood_2026_05_28',
+    timestamp: '2026-05-28T08:05:00-07:00',
     type: 'press_release',
-    source: 'ipaws',
-    payload: { agency: 'CAL FIRE', headline: 'Box Springs Fire — Initial Attack' },
-  },
-  {
-    id: 'evt_rv_002',
-    incidentId: 'inc_riverside_fire_2026_05_24',
-    timestamp: '2026-05-25T22:10:00-07:00',
-    type: 'road_closure',
     source: 'county_gis',
-    payload: { road: 'CA-60 EB at Pigeon Pass', reason: 'Active fire over roadway' },
+    payload: {
+      agency: 'Miami-Dade Emergency Mgmt',
+      headline: 'Evacuation orders issued for Miami Beach coastal zones',
+    },
   },
 ];
 

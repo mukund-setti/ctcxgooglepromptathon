@@ -2,7 +2,7 @@ import { AlertTriangle, Volume2, VolumeX, Globe } from 'lucide-react';
 import { useI18n, LANGUAGES } from '../lib/i18n.jsx';
 import IncidentSelector from './IncidentSelector.jsx';
 
-export default function Header({ voiceOn, onToggleVoice, incidents, selectedIncident, onSelectIncident }) {
+export default function Header({ voiceOn, onToggleVoice, incidents, selectedIncident, onSelectIncident, hasLocation }) {
   const { t, lang, setLang, translating } = useI18n();
 
   return (
@@ -21,6 +21,7 @@ export default function Header({ voiceOn, onToggleVoice, incidents, selectedInci
             incidents={incidents}
             selectedIncident={selectedIncident}
             onSelectIncident={onSelectIncident}
+            hasLocation={hasLocation}
           />
         </div>
 

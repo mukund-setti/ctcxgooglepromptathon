@@ -18,7 +18,7 @@ const HAZARD_COLORS = {
   earthquake: 'text-amber-400 border-amber-500/30 bg-amber-950/20',
 };
 
-export default function IncidentSelector({ incidents, selectedIncident, onSelectIncident }) {
+export default function IncidentSelector({ incidents, selectedIncident, onSelectIncident, hasLocation }) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -44,9 +44,10 @@ export default function IncidentSelector({ incidents, selectedIncident, onSelect
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
+          title={t.changeIncident || 'Change Incident'}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl border backdrop-blur transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] min-h-[44px] ${activeColorClass}`}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl border backdrop-blur transition-all duration-200 min-h-[44px] hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${activeColorClass}`}
         >
           <span className="relative flex h-3 w-3 items-center">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -63,9 +64,9 @@ export default function IncidentSelector({ incidents, selectedIncident, onSelect
       {isOpen && (
         <ul
           role="listbox"
-          className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-72 origin-top-right rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md shadow-2xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50 divide-y divide-slate-800/60 overflow-hidden"
+          className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-72 origin-top-right rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md shadow-2xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50 divide-y divide-slate-800/60 max-h-64 overflow-y-auto"
         >
-          <div className="px-3 py-2 text-xs font-semibold font-mono text-slate-500 uppercase tracking-wider bg-slate-950/20">
+          <div className="px-3 py-2 text-xs font-semibold font-mono text-slate-500 uppercase tracking-wider bg-slate-950/20 sticky top-0 bg-slate-900 z-10 border-b border-slate-800">
             {t.activeHazards || 'Active Hazards'}
           </div>
           {incidents.map((incident) => {
