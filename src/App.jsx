@@ -14,6 +14,16 @@ import { classifyPoint, nearestSafeShelter, haversine } from './lib/zones.js';
 import { getRoute } from './lib/directions.js';
 import { generateChecklist } from './lib/gemini.js';
 
+// Base URL for the HazAlert backend. In dev the Vite proxy forwards "/api/*"
+// to localhost:3001; in a static deploy point VITE_API_BASE_URL at the
+// deployed backend (e.g. "https://hazalert-api.up.railway.app"). Trailing
+// slash stripped so callers can always do `${API_BASE}/api/incidents`.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+// How often the dashboard re-pulls the live incident list + selected snapshot.
+// Matches the backend scheduler cadence so we never lag more than ~2 ticks.
+const POLL_INTERVAL_MS = 60_000;
+
 // Dynamic shelters database for different locations
 const SHELTERS_BY_INCIDENT = {
   inc_gg_mma_2026_05_21: [
@@ -181,7 +191,7 @@ function AppInner() {
   useEffect(() => {
     async function loadIncidents() {
       try {
-        const res = await fetch('/api/incidents');
+        const res = await fetch(`${API_BASE}/api/incidents`);
         if (!res.ok) throw new Error('API failed');
         const data = await res.json();
         setIncidents(data.incidents || []);
@@ -246,6 +256,58 @@ function AppInner() {
     loadIncidents();
   }, []);
 
+  // Background refresh every POLL_INTERVAL_MS: re-pull the incident list and,
+  // if an incident is selected, re-pull its current snapshot. Paused while the
+  // tab is hidden; immediate re-fetch on tab focus.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refresh() {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      try {
+        const listRes = await fetch(`${API_BASE}/api/incidents`);
+        if (!listRes.ok) throw new Error(`incidents fetch ${listRes.status}`);
+        const listData = await listRes.json();
+        if (cancelled) return;
+
+        const next = listData.incidents || [];
+        setIncidents(next);
+
+        const selectedId = selectedIncidentRef.current?.id;
+        if (selectedId) {
+          const stillThere = next.find((i) => i.id === selectedId);
+          if (!stillThere) {
+            console.info('[App] selected incident disappeared from feed; clearing selection');
+            return;
+          }
+          const detailRes = await fetch(`${API_BASE}/api/incidents/${selectedId}`);
+          if (!detailRes.ok) return;
+          const detailData = await detailRes.json();
+          if (cancelled) return;
+          if (detailData.currentSnapshot) {
+            setCurrentSnapshot(detailData.currentSnapshot);
+          }
+        }
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn('[App] background refresh failed:', err.message);
+        }
+      }
+    }
+
+    const id = setInterval(refresh, POLL_INTERVAL_MS);
+    const onVisible = () => {
+      if (!document.hidden) refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
   // Fetch full incident details & zones snapshot
   async function handleSelectIncident(incident, keepUserPoint = false) {
     setSelectedIncident(incident);
@@ -262,7 +324,7 @@ function AppInner() {
     }
 
     try {
-      const res = await fetch(`/api/incidents/${incident.id}`);
+      const res = await fetch(`${API_BASE}/api/incidents/${incident.id}`);
       if (!res.ok) throw new Error('API failed');
       const data = await res.json();
       setCurrentSnapshot(data.currentSnapshot || null);
@@ -431,7 +493,7 @@ function AppInner() {
 
     // Dynamic Geolocation-Aware auto-detection of closest active incident
     try {
-      const res = await fetch(`/api/incidents/near?lat=${point.lat}&lng=${point.lng}`);
+      const res = await fetch(`${API_BASE}/api/incidents/near?lat=${point.lat}&lng=${point.lng}`);
       if (res.ok) {
         const data = await res.json();
         if (data.nearest && data.nearest.incident) {

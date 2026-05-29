@@ -25,9 +25,11 @@ export type ZoneLevel =
 
 export type DataSource =
   | 'ipaws'            // FEMA Integrated Public Alert & Warning System
+  | 'nws'              // api.weather.gov live CAP-derived JSON alerts
   | 'county_gis'       // County emergency management GeoJSON feeds
   | 'news_extraction'  // Gemini-extracted from press releases / news
-  | 'manual';          // Operator-entered (admin console)
+  | 'manual'           // Operator-entered (admin console)
+  | 'seed';            // Hard-coded demo data shipped with the app
 
 export type NotificationChannel = 'web_push' | 'sms' | 'email';
 

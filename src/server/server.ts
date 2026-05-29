@@ -32,7 +32,7 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-app.listen(PORT, () => {
+app.listen(Number(PORT), '0.0.0.0', () => {
   // eslint-disable-next-line no-console
-  console.log(`[server] HazAlert scaled backend running on http://localhost:${PORT}`);
+  console.log(`[server] HazAlert scaled backend listening on 0.0.0.0:${PORT}`);
 });

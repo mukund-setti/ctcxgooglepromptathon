@@ -105,67 +105,234 @@ export function parseCapXml(xml: string): ZoneSnapshot | null {
   }
 }
 
-// Simulated active IPAWS feed of public CAP 1.2 alerts
-const MOCK_IPAWS_FEED = [
-  `<?xml version="1.0" encoding="UTF-8"?>
-<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
-  <identifier>IPAWS-2026-WILDFIRE-987</identifier>
-  <sender>calfire-riverside@ca.gov</sender>
-  <sent>2026-05-27T00:01:00-07:00</sent>
-  <status>Actual</status>
-  <msgType>Alert</msgType>
-  <scope>Public</scope>
-  <info>
-    <category>Safety</category>
-    <event>Santa Ana Canyon Wildfire</event>
-    <urgency>Immediate</urgency>
-    <severity>Extreme</severity>
-    <certainty>Observed</certainty>
-    <headline>URGENT: MANDATORY EVACUATION ORDER FOR SANTA ANA CANYON</headline>
-    <description>Fast-moving brush fire pushed by Santa Ana winds towards eastern canyon foothills.</description>
-    <instruction>Evacuate immediately toward the west via Highway 91. Take essential go-bags, pets, and medicine.</instruction>
-    <area>
-      <areaDesc>Santa Ana Canyon Foothills</areaDesc>
-      <polygon>33.8800,-117.7500 33.8800,-117.7000 33.8400,-117.7000 33.8400,-117.7500 33.8800,-117.7500</polygon>
-    </area>
-  </info>
-</alert>`,
-  `<?xml version="1.0" encoding="UTF-8"?>
-<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
-  <identifier>IPAWS-2026-FLOOD-441</identifier>
-  <sender>nws-sacramento@noaa.gov</sender>
-  <sent>2026-05-27T00:01:30-07:00</sent>
-  <status>Actual</status>
-  <msgType>Alert</msgType>
-  <scope>Public</scope>
-  <info>
-    <category>Safety</category>
-    <event>Severe River Flood</event>
-    <urgency>Immediate</urgency>
-    <severity>Severe</severity>
-    <certainty>Likely</certainty>
-    <headline>SHELTER IN PLACE ORDER: AMERICAN RIVER FLOODING</headline>
-    <description>Rapidly rising river levels causing dangerous overflow along riverbank streets.</description>
-    <instruction>Move to high ground or higher floors. Seal lower doorways. Turn off utilities if directed.</instruction>
-    <area>
-      <areaDesc>American River lowlands</areaDesc>
-      <polygon>38.6100,-121.4300 38.6100,-121.3900 38.5800,-121.3900 38.5800,-121.4300 38.6100,-121.4300</polygon>
-    </area>
-  </info>
-</alert>`,
-];
+// ----------------------------------------------------------------------------
+// NWS / NOAA — live CAP-derived alert feed (api.weather.gov)
+// ----------------------------------------------------------------------------
+
+const NWS_USER_AGENT =
+  process.env.HAZALERT_USER_AGENT ||
+  'HazAlert/0.1 (https://github.com/ctcxgooglepromptathon; contact: ops@hazalert.local)';
+
+const NWS_ACTIVE_ALERTS_URL = 'https://api.weather.gov/alerts/active';
+const NWS_MAX_ALERTS = 250;
+
+interface NwsFeatureProperties {
+  id?: string;
+  event?: string;
+  headline?: string;
+  description?: string;
+  instruction?: string | null;
+  severity?: string;
+  certainty?: string;
+  urgency?: string;
+  sent?: string;
+  effective?: string;
+  onset?: string;
+  expires?: string;
+  ends?: string | null;
+  status?: string;
+  messageType?: string;
+  category?: string;
+  areaDesc?: string;
+  senderName?: string;
+}
+
+interface NwsGeometry {
+  type: string;
+  coordinates: number[][][] | number[][][][] | number[][];
+}
+
+interface NwsFeature {
+  id?: string;
+  type: 'Feature';
+  geometry: NwsGeometry | null;
+  properties: NwsFeatureProperties;
+}
+
+interface NwsFeatureCollection {
+  type: 'FeatureCollection';
+  features: NwsFeature[];
+}
+
+function nwsSeverityToZone(severity: string | undefined): {
+  level: ZoneLevel;
+  color: string;
+  label: string;
+} {
+  switch ((severity || '').toLowerCase()) {
+    case 'extreme':
+      return { level: 'mandatory', color: '#DC2626', label: 'Mandatory Action (NWS Extreme)' };
+    case 'severe':
+      return { level: 'shelter_in_place', color: '#F59E0B', label: 'Shelter-in-Place (NWS Severe)' };
+    case 'moderate':
+      return { level: 'watch', color: '#FB923C', label: 'Watch (NWS Moderate)' };
+    default:
+      return { level: 'advisory', color: '#3B82F6', label: 'Advisory (NWS)' };
+  }
+}
+
+function nwsEventToIncidentType(event: string | undefined): IncidentType {
+  const e = (event || '').toLowerCase();
+  if (e.includes('fire') || e.includes('red flag') || e.includes('smoke')) return 'wildfire';
+  if (
+    e.includes('flood') ||
+    e.includes('tsunami') ||
+    e.includes('surge') ||
+    e.includes('hurricane') ||
+    e.includes('tropical')
+  )
+    return 'flood';
+  if (e.includes('earthquake')) return 'earthquake';
+  if (e.includes('hazardous materials') || e.includes('hazmat') || e.includes('chemical'))
+    return 'chemical';
+  if (e.includes('civil') || e.includes('shelter in place') || e.includes('law enforcement'))
+    return 'active_shooter';
+  if (e.includes('tornado') || e.includes('thunderstorm') || e.includes('wind')) return 'wildfire';
+  return 'flood';
+}
+
+function nwsGeometryToPolygon(geom: NwsGeometry | null): LatLng[] {
+  if (!geom) return [];
+  const flatten = (coords: any): LatLng[] => {
+    if (!Array.isArray(coords)) return [];
+    if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') {
+      return coords
+        .filter(
+          (pt: any) =>
+            Array.isArray(pt) &&
+            Number.isFinite(pt[0]) &&
+            Number.isFinite(pt[1]),
+        )
+        .map((pt: any) => ({ lat: pt[1], lng: pt[0] }));
+    }
+    return [];
+  };
+
+  if (geom.type === 'Polygon') {
+    return flatten((geom.coordinates as number[][][])[0]);
+  }
+  if (geom.type === 'MultiPolygon') {
+    const polys = (geom.coordinates as number[][][][]).map((p) => flatten(p[0]));
+    return polys.sort((a, b) => b.length - a.length)[0] || [];
+  }
+  return [];
+}
+
+function centroidOf(polygon: LatLng[]): LatLng {
+  if (polygon.length === 0) return { lat: 0, lng: 0 };
+  let lat = 0;
+  let lng = 0;
+  for (const p of polygon) {
+    lat += p.lat;
+    lng += p.lng;
+  }
+  return { lat: lat / polygon.length, lng: lng / polygon.length };
+}
+
+export interface NwsAlertParsed {
+  incident: Incident;
+  snapshot: ZoneSnapshot;
+}
+
+function alertToIncidentAndSnapshot(feature: NwsFeature): NwsAlertParsed | null {
+  const props = feature.properties || {};
+  const rawId = props.id || feature.id;
+  if (!rawId) return null;
+
+  const polygon = nwsGeometryToPolygon(feature.geometry);
+  if (polygon.length < 3) return null;
+
+  const { level, color, label } = nwsSeverityToZone(props.severity);
+  const guidance =
+    [props.instruction, props.description, props.headline]
+      .filter((s): s is string => typeof s === 'string' && s.length > 0)
+      .join('\n\n') || 'Follow guidance from your local emergency management agency.';
+
+  const stableId = `inc_nws_${String(rawId).replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const startedAt = props.onset || props.effective || props.sent || new Date().toISOString();
+
+  const snapshot: ZoneSnapshot = {
+    id: `snap_nws_${stableId}_${new Date(props.sent || Date.now()).getTime()}`,
+    incidentId: stableId,
+    timestamp: props.sent || new Date().toISOString(),
+    source: 'nws',
+    zones: [
+      {
+        level,
+        polygon,
+        guidance,
+        color,
+        label: props.event ? `${label}: ${props.event}` : label,
+      },
+    ],
+  };
+
+  const incident: Incident = {
+    id: stableId,
+    name: props.event || props.headline || 'NWS Alert',
+    type: nwsEventToIncidentType(props.event),
+    facility: props.areaDesc,
+    startedAt,
+    status: 'active',
+    centroid: centroidOf(polygon),
+    currentSnapshotId: snapshot.id,
+    summary:
+      props.headline ||
+      (props.areaDesc ? `${props.event} affecting ${props.areaDesc}` : props.event) ||
+      'Active alert from NWS.',
+  };
+
+  return { incident, snapshot };
+}
+
+export async function fetchNwsActiveAlerts(): Promise<NwsAlertParsed[]> {
+  try {
+    const res = await fetch(NWS_ACTIVE_ALERTS_URL, {
+      headers: {
+        Accept: 'application/geo+json',
+        'User-Agent': NWS_USER_AGENT,
+      },
+    });
+
+    if (!res.ok) {
+      console.error(
+        `[sources] NWS active-alerts fetch failed: ${res.status} ${res.statusText}`,
+      );
+      return [];
+    }
+
+    const data = (await res.json()) as NwsFeatureCollection;
+    if (!data || !Array.isArray(data.features)) {
+      console.warn('[sources] NWS response had no features array');
+      return [];
+    }
+
+    const parsed: NwsAlertParsed[] = [];
+    for (const feature of data.features) {
+      const props = feature.properties || {};
+      const status = (props.status || '').toLowerCase();
+      const msgType = (props.messageType || '').toLowerCase();
+      if (status === 'test' || status === 'exercise' || status === 'draft') continue;
+      if (msgType === 'cancel') continue;
+
+      const item = alertToIncidentAndSnapshot(feature);
+      if (item) parsed.push(item);
+      if (parsed.length >= NWS_MAX_ALERTS) break;
+    }
+    return parsed;
+  } catch (err) {
+    console.error('[sources] NWS active-alerts fetch threw:', err);
+    return [];
+  }
+}
 
 /**
- * Fetch active alerts from FEMA's Integrated Public Alert & Warning System.
- * In local environment, parses our simulated CAP 1.2 XML alerts.
+ * Back-compat shim. Legacy mock IPAWS feed has been replaced by the live NWS
+ * feed; preserves the old return shape (ZoneSnapshot[]).
  */
 export async function fetchIpawsAlerts(): Promise<ZoneSnapshot[]> {
-  const snapshots: ZoneSnapshot[] = [];
-  for (const xml of MOCK_IPAWS_FEED) {
-    const snap = parseCapXml(xml);
-    if (snap) snapshots.push(snap);
-  }
-  return snapshots;
+  const parsed = await fetchNwsActiveAlerts();
+  return parsed.map((p) => p.snapshot);
 }
 
 // ----------------------------------------------------------------------------
@@ -173,68 +340,15 @@ export async function fetchIpawsAlerts(): Promise<ZoneSnapshot[]> {
 // ----------------------------------------------------------------------------
 
 /**
- * Fetch the current evacuation-zone GeoJSON layer from a county GIS server.
- * In local environment, generates simulated county GIS GeoJSON features.
+ * County GIS feeds vary per-jurisdiction. The production system loads a
+ * per-county adapter; for the multi-source live pipeline we rely on NWS,
+ * which republishes the county-issued IPAWS polygons that matter for
+ * evacuation. Empty array here preserves the scheduler signature.
  */
 export async function fetchCountyGisLayer(
-  countyName: string,
+  _countyName: string,
 ): Promise<ZoneSnapshot[]> {
-  // A county GIS server publishes GeoJSON. Let's simulate a standard ArcGIS REST query response:
-  const mockGeoJson = {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        properties: {
-          level: 'mandatory' as ZoneLevel,
-          label: `${countyName.toUpperCase()} Mandatory Evacuation`,
-          guidance: `Evacuate now under ${countyName} county authority orders.`,
-          color: '#DC2626',
-        },
-        geometry: {
-          type: 'Polygon',
-          coordinates: [
-            [
-              [-117.965, 33.79],
-              [-117.945, 33.79],
-              [-117.945, 33.77],
-              [-117.965, 33.77],
-              [-117.965, 33.79],
-            ],
-          ],
-        },
-      },
-    ],
-  };
-
-  const zones: ZoneSnapshot['zones'] = [];
-
-  for (const feat of mockGeoJson.features) {
-    const coords = feat.geometry.coordinates[0];
-    const polygon: LatLng[] = coords.map((c) => ({
-      // Swapping coordinate order: GeoJSON is [lng, lat] -> we convert to {lat, lng}
-      lat: c[1],
-      lng: c[0],
-    }));
-
-    zones.push({
-      level: feat.properties.level,
-      polygon,
-      guidance: feat.properties.guidance,
-      color: feat.properties.color,
-      label: feat.properties.label,
-    });
-  }
-
-  return [
-    {
-      id: `snap_gis_${countyName}_${Date.now()}`,
-      incidentId: `inc_gg_mma_2026_05_21`, // Link to Garden Grove chemical leak
-      timestamp: new Date().toISOString(),
-      source: 'county_gis',
-      zones,
-    },
-  ];
+  return [];
 }
 
 // ----------------------------------------------------------------------------
