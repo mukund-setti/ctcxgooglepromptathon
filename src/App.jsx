@@ -23,6 +23,58 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 // Matches the backend scheduler cadence so we never lag more than ~2 ticks.
 const POLL_INTERVAL_MS = 60_000;
 
+// ---------------------------------------------------------------------------
+// Resilient fetch: auto-abort after timeoutMs so the UI never hangs.
+// ---------------------------------------------------------------------------
+const FETCH_TIMEOUT_MS = 5_000;
+
+// Dev-only diagnostic log — collects every API call so we can trace failures.
+const __apiLog = [];
+if (import.meta.env.DEV) {
+  window.__hazalertApiLog = __apiLog;   // accessible from console
+}
+
+function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const t0 = performance.now();
+  const entry = {
+    url,
+    startedAt: new Date().toISOString(),
+    durationMs: null,
+    status: null,
+    error: null,
+    timedOut: false,
+  };
+  __apiLog.push(entry);
+  // Keep log bounded
+  if (__apiLog.length > 200) __apiLog.splice(0, __apiLog.length - 100);
+
+  return fetch(url, { ...options, signal: controller.signal })
+    .then((res) => {
+      entry.durationMs = Math.round(performance.now() - t0);
+      entry.status = res.status;
+      if (import.meta.env.DEV) {
+        console.debug(`[API] ${res.status} ${url} (${entry.durationMs}ms)`);
+      }
+      return res;
+    })
+    .catch((err) => {
+      entry.durationMs = Math.round(performance.now() - t0);
+      entry.timedOut = err.name === 'AbortError';
+      entry.error = entry.timedOut
+        ? `TIMEOUT after ${timeoutMs}ms`
+        : err.message;
+      if (import.meta.env.DEV) {
+        console.warn(
+          `[API] FAIL ${url} — ${entry.error} (${entry.durationMs}ms)`,
+        );
+      }
+      throw err;
+    })
+    .finally(() => clearTimeout(timer));
+}
+
 // Dynamic shelters database for different locations
 const SHELTERS_BY_INCIDENT = {
   inc_gg_mma_2026_05_21: [
@@ -231,7 +283,7 @@ function AppInner() {
   useEffect(() => {
     async function loadIncidents() {
       try {
-        const res = await fetch(`${API_BASE}/api/incidents`);
+        const res = await fetchWithTimeout(`${API_BASE}/api/incidents`);
         if (!res.ok) throw new Error('API failed');
         const data = await res.json();
         setIncidents(data.incidents || []);
@@ -283,7 +335,7 @@ function AppInner() {
     async function refresh() {
       if (typeof document !== 'undefined' && document.hidden) return;
       try {
-        const listRes = await fetch(`${API_BASE}/api/incidents`);
+        const listRes = await fetchWithTimeout(`${API_BASE}/api/incidents`);
         if (!listRes.ok) throw new Error(`incidents fetch ${listRes.status}`);
         const listData = await listRes.json();
         if (cancelled) return;
@@ -298,7 +350,7 @@ function AppInner() {
             console.info('[App] selected incident disappeared from feed; clearing selection');
             return;
           }
-          const detailRes = await fetch(`${API_BASE}/api/incidents/${selectedId}`);
+          const detailRes = await fetchWithTimeout(`${API_BASE}/api/incidents/${selectedId}`);
           if (!detailRes.ok) return;
           const detailData = await detailRes.json();
           if (cancelled) return;
@@ -342,7 +394,7 @@ function AppInner() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/incidents/${incident.id}`);
+      const res = await fetchWithTimeout(`${API_BASE}/api/incidents/${incident.id}`);
       if (!res.ok) throw new Error('API failed');
       const data = await res.json();
       setCurrentSnapshot(data.currentSnapshot || null);
@@ -459,7 +511,7 @@ function AppInner() {
 
     // Dynamic Geolocation-Aware auto-detection of closest active incident
     try {
-      const res = await fetch(`${API_BASE}/api/incidents/near?lat=${point.lat}&lng=${point.lng}`);
+      const res = await fetchWithTimeout(`${API_BASE}/api/incidents/near?lat=${point.lat}&lng=${point.lng}`);
       if (res.ok) {
         const data = await res.json();
         if (data.nearest && data.nearest.incident) {
@@ -486,7 +538,7 @@ function AppInner() {
       // Check if the user is actually inside an active warning/evacuation zone of this closest incident
       let isUserInDangerZone = false;
       try {
-        const detailRes = await fetch(`${API_BASE}/api/incidents/${matched.id}`);
+        const detailRes = await fetchWithTimeout(`${API_BASE}/api/incidents/${matched.id}`);
         if (detailRes.ok) {
           const detailData = await detailRes.json();
           const snap = detailData.currentSnapshot;
@@ -546,6 +598,7 @@ function AppInner() {
         <div className="font-mono text-sm tracking-widest uppercase animate-pulse">
           Loading HazAlert dashboard…
         </div>
+        {import.meta.env.DEV && <DevApiDiagnostics alwaysOpen />}
       </div>
     );
   }
@@ -665,6 +718,7 @@ function AppInner() {
         shelters={activeShelters}
         onExtractDetails={handleExtractedDetails}
       />
+      {import.meta.env.DEV && <DevApiDiagnostics />}
     </div>
   );
 }
@@ -683,6 +737,134 @@ function TabBtn({ active, onClick, children }) {
     >
       {children}
     </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dev-only: API diagnostics overlay (tree-shaken out in production builds)
+// ---------------------------------------------------------------------------
+function DevApiDiagnostics({ alwaysOpen = false }) {
+  const [open, setOpen] = useState(alwaysOpen);
+  const [, forceUpdate] = useState(0);
+
+  // Re-render every second to show live log updates
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => forceUpdate((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [open]);
+
+  const apiBase = API_BASE || '(empty — using same origin)';
+  const resolvedBase = API_BASE || window.location.origin;
+  const totalCalls = __apiLog.length;
+  const failures = __apiLog.filter((e) => e.error);
+  const timeouts = __apiLog.filter((e) => e.timedOut);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="fixed bottom-3 right-3 z-[9999] bg-amber-500/90 hover:bg-amber-400 text-black text-xs font-bold px-3 py-1.5 rounded-full shadow-lg"
+        title="Open API Diagnostics"
+      >
+        🔧 API Diag ({failures.length} err)
+      </button>
+    );
+  }
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-[9999] max-h-[50vh] overflow-y-auto bg-gray-950/95 backdrop-blur border-t-2 border-amber-500 text-xs font-mono text-slate-300 shadow-2xl">
+      <div className="sticky top-0 bg-gray-950 border-b border-slate-700 px-4 py-2 flex items-center justify-between">
+        <span className="text-amber-400 font-bold text-sm">🔧 DEV API DIAGNOSTICS</span>
+        {!alwaysOpen && (
+          <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-white px-2">
+            ✕ Close
+          </button>
+        )}
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+        {/* Config summary */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          <span className="text-slate-500">VITE_API_BASE_URL</span>
+          <span className={API_BASE ? 'text-green-400' : 'text-red-400 font-bold'}>
+            {apiBase}
+          </span>
+          <span className="text-slate-500">Resolved target</span>
+          <span className="text-sky-300">{resolvedBase}/api/*</span>
+          <span className="text-slate-500">Fetch timeout</span>
+          <span>{FETCH_TIMEOUT_MS}ms</span>
+          <span className="text-slate-500">Total API calls</span>
+          <span>{totalCalls}</span>
+          <span className="text-slate-500">Failures</span>
+          <span className={failures.length ? 'text-red-400 font-bold' : 'text-green-400'}>
+            {failures.length}
+          </span>
+          <span className="text-slate-500">Timeouts</span>
+          <span className={timeouts.length ? 'text-amber-400 font-bold' : 'text-green-400'}>
+            {timeouts.length}
+          </span>
+        </div>
+
+        {/* Warnings */}
+        {!API_BASE && (
+          <div className="bg-red-900/40 border border-red-700 rounded px-3 py-2 text-red-300">
+            ⚠ <strong>VITE_API_BASE_URL is empty.</strong> All /api/* calls target the current origin
+            ({window.location.origin}). If no backend is running there, every call will fail or timeout.
+            Set this in <code className="bg-red-900 px-1 rounded">.env</code> and restart Vite.
+          </div>
+        )}
+
+        {timeouts.length > 0 && (
+          <div className="bg-amber-900/40 border border-amber-700 rounded px-3 py-2 text-amber-300">
+            ⏱ <strong>{timeouts.length} request(s) timed out</strong> — the backend at{' '}
+            <code className="bg-amber-900 px-1 rounded">{resolvedBase}</code> is likely unreachable.
+            Check: Is the backend server running? Is the port correct? Is CORS configured?
+          </div>
+        )}
+
+        {/* Request log table */}
+        {totalCalls > 0 && (
+          <div>
+            <div className="text-slate-500 mb-1">Request log (newest first):</div>
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-slate-500 border-b border-slate-800">
+                  <th className="pr-2 py-1">Time</th>
+                  <th className="pr-2 py-1">URL</th>
+                  <th className="pr-2 py-1">Status</th>
+                  <th className="pr-2 py-1">Duration</th>
+                  <th className="py-1">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...__apiLog].reverse().map((e, i) => (
+                  <tr key={i} className={`border-b border-slate-800/50 ${e.error ? 'text-red-400' : ''}`}>
+                    <td className="pr-2 py-1 whitespace-nowrap">{e.startedAt.split('T')[1]?.slice(0, 8)}</td>
+                    <td className="pr-2 py-1 max-w-[300px] truncate" title={e.url}>
+                      {e.url.replace(resolvedBase, '')}
+                    </td>
+                    <td className="pr-2 py-1">
+                      {e.timedOut ? '⏱ TIMEOUT' : e.status ?? '…'}
+                    </td>
+                    <td className="pr-2 py-1">
+                      {e.durationMs != null ? `${e.durationMs}ms` : '…'}
+                    </td>
+                    <td className="py-1 max-w-[200px] truncate" title={e.error || ''}>
+                      {e.error || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="text-slate-600 text-[10px]">
+          Tip: Full log available in console via <code>window.__hazalertApiLog</code>
+        </div>
+      </div>
+    </div>
   );
 }
 
