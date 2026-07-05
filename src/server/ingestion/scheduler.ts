@@ -1,7 +1,7 @@
 /**
  * HazAlert — Ingestion Scheduler
  *
- * Polls the live NWS active-alerts feed every 60s, upserts each alert as an
+ * Polls the live NWS active-alerts feed once a week, upserts each alert as an
  * Incident + ZoneSnapshot, diffs against the previously stored snapshot, and
  * fires the notify pipeline on real changes. Seeded demo incidents are
  * preserved so the walkthrough still works alongside live data.
@@ -12,7 +12,11 @@ import * as storage from '../storage/firestore';
 import { notifyZoneTransition } from '../notifications/dispatcher';
 import type { ZoneSnapshot, UserSubscription, LatLng, Incident } from '../../types/incident';
 
-const POLL_INTERVAL_MS = 60_000;
+// Poll once a week. The old 60s cadence pegged ~1.2 vCPU around the clock
+// (re-fetching + regex-parsing the full national NWS feed every minute), which
+// was the dominant driver of Railway CPU billing. Weekly is well under the
+// setInterval 32-bit ceiling (~24.8 days).
+const POLL_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 604,800,000 ms = 1 week
 
 /**
  * NWS-ingested incidents are namespaced with this prefix. Only incidents
